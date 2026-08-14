@@ -1,0 +1,13 @@
+{
+  "name": "Pengantaran Obat Gratis - RSUD Provinsi NTB",
+  "short_name": "Antar Obat",
+  "description": "PWA internal layanan pengantaran obat gratis RSUD Provinsi Nusa Tenggara Barat",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f8f9",
+  "theme_color": "#083543",
+  "icons": [
+    {"src":"./icons/logo-rsud.png","sizes":"360x360","type":"image/png","purpose":"any maskable"}
+  ]
+}
