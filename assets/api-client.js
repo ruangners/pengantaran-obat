@@ -11,7 +11,7 @@ function trustedAppsScriptMessageOrigin(origin) {
 }
 
 export class AppsScriptFormTransport {
-  constructor({ endpoint, timeoutMs = 20000, onState = () => {} }) {
+  constructor({ endpoint, timeoutMs = 25000, onState = () => {} }) {
     this.endpoint = String(endpoint || '').trim();
     this.timeoutMs = timeoutMs;
     this.onState = onState;
@@ -33,7 +33,7 @@ export class AppsScriptFormTransport {
 
   async connect() {
     this.onState({ ready: false, message: 'Menguji koneksi backend…' });
-    const result = await this.call('stage1Ping');
+    const result = await this.call('stage2Ping');
     const version = result?.data?.version || '';
     this.onState({ ready: true, message: `Backend siap • ${version}` });
     return result;
@@ -121,8 +121,22 @@ export class AppsScriptFormTransport {
 
 export class PengantaranApi {
   constructor(transport) { this.transport = transport; }
-  ping() { return this.transport.call('stage1Ping'); }
+
+  ping() { return this.transport.call('stage2Ping'); }
   login(pin, clientInfo) { return this.transport.call('stage1Login', String(pin || ''), clientInfo || {}); }
   session(token) { return this.transport.call('stage1Session', String(token || '')); }
   logout(token) { return this.transport.call('stage1Logout', String(token || '')); }
+
+  farmasiBootstrap(token) { return this.transport.call('stage2FarmasiBootstrap', String(token || '')); }
+  farmasiRows(token, searchText = '') { return this.transport.call('stage2FarmasiRows', String(token || ''), String(searchText || '')); }
+  pendingReceiptVerifications(token) { return this.transport.call('stage2PendingReceiptVerifications', String(token || '')); }
+  refreshFarmasiMaster(token) { return this.transport.call('stage2RefreshFarmasiMaster', String(token || '')); }
+  createDelivery(token, payload) { return this.transport.call('stage2CreateDelivery', String(token || ''), payload || {}); }
+  updateFarmasiRecord(token, id, payload) { return this.transport.call('stage2UpdateFarmasiRecord', String(token || ''), String(id || ''), payload || {}); }
+  markReady(token, id) { return this.transport.call('stage2MarkReady', String(token || ''), String(id || '')); }
+  registrationWa(token, id) { return this.transport.call('stage2RegistrationWa', String(token || ''), String(id || '')); }
+  manualReceiptWa(token, id) { return this.transport.call('stage2ManualReceiptWa', String(token || ''), String(id || '')); }
+  manualVerifyReceipt(token, id, method, note) {
+    return this.transport.call('stage2ManualVerifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || ''));
+  }
 }
