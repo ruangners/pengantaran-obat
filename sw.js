@@ -1,5 +1,5 @@
-const CACHE='antar-obat-stage2-farmasi-v2';
-const CORE=['./','./index.html','./manifest.webmanifest','./assets/config.js','./assets/api-client.js','./assets/app.js','./assets/farmasi.js','./assets/styles.css','./icons/logo-rsud.png','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE='antar-obat-stage3-kurir-v3';
+const CORE=['./','./index.html','./manifest.webmanifest','./assets/config.js','./assets/api-client.js','./assets/app.js','./assets/farmasi.js','./assets/courier.js','./assets/styles.css','./icons/logo-rsud.png','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener('fetch',e=>{
