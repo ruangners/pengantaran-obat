@@ -53,7 +53,7 @@ export class AppsScriptFormTransport {
     const version = String(result?.data?.version || '');
     const contract = String(result?.data?.apiContract || '');
     if (this.expectedContract && contract !== this.expectedContract) {
-      throw makeError(`Versi backend belum kompatibel dengan aplikasi ini. Backend: ${version || 'tidak diketahui'}. Perbarui WebApiStage6B.gs lalu deploy versi baru.`, 'VERSION_MISMATCH');
+      throw makeError(`Kontrak API belum cocok. Backend ${version || 'tidak diketahui'} memakai ${contract || '(tidak ada kontrak)'}, sedangkan frontend mengharapkan ${this.expectedContract}. Jika backend sudah 6.1.1 HF1, muat ulang frontend terbaru.`, 'VERSION_MISMATCH');
     }
     this.onState({ ready: true, message: `Backend siap • ${version}` });
     return result;
@@ -191,8 +191,11 @@ export class PengantaranApi {
   pendingReceiptVerifications(token) { return this._read('stage2PendingReceiptVerifications', String(token || '')); }
   failedDeliveryFollowUps(token) { return this._read('stage6B1FailedFollowUps', String(token || '')); }
   confirmReturnedToFarmasi(token, id) { return this._mutate('stage6B1ConfirmReturn', String(token || ''), String(id || '')); }
+  planRedelivery(token, id, payload) { return this._mutate('stage6B1PlanRedelivery', String(token || ''), String(id || ''), payload || {}); }
   rescheduleDelivery(token, id, payload) { return this._mutate('stage6B1Reschedule', String(token || ''), String(id || ''), payload || {}); }
+  markSelfPickup(token, id, note = '') { return this._mutate('stage6B1MarkSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
   closeFailedDelivery(token, id, note) { return this._mutate('stage6B1CloseService', String(token || ''), String(id || ''), String(note || '')); }
+  resumeDelivery(token, id) { return this._mutate('stage6B1ResumeDelivery', String(token || ''), String(id || '')); }
   attemptHistory(token, id) { return this._read('stage6B1AttemptHistory', String(token || ''), String(id || '')); }
   refreshFarmasiMaster(token) { return this._read('stage2RefreshFarmasiMaster', String(token || '')); }
   createDelivery(token, payload) { return this._mutate('stage2CreateDelivery', String(token || ''), payload || {}); }
