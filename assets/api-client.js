@@ -33,7 +33,7 @@ export class AppsScriptFormTransport {
 
   async connect() {
     this.onState({ ready: false, message: 'Menguji koneksi backend…' });
-    const result = await this.call('stage3Ping');
+    const result = await this.call('stage2Ping');
     const version = result?.data?.version || '';
     this.onState({ ready: true, message: `Backend siap • ${version}` });
     return result;
@@ -122,7 +122,7 @@ export class AppsScriptFormTransport {
 export class PengantaranApi {
   constructor(transport) { this.transport = transport; }
 
-  ping() { return this.transport.call('stage3Ping'); }
+  ping() { return this.transport.call('stage2Ping'); }
   login(pin, clientInfo) { return this.transport.call('stage1Login', String(pin || ''), clientInfo || {}); }
   session(token) { return this.transport.call('stage1Session', String(token || '')); }
   logout(token) { return this.transport.call('stage1Logout', String(token || '')); }
@@ -142,11 +142,22 @@ export class PengantaranApi {
 
   courierBootstrap(token) { return this.transport.call('stage3CourierBootstrap', String(token || '')); }
   courierRows(token) { return this.transport.call('stage3CourierRows', String(token || '')); }
-  courierHistory(token, limit = 50) { return this.transport.call('stage3CourierHistory', String(token || ''), Number(limit) || 50); }
+  courierHistory(token, limit = 50) { return this.transport.call('stage3CourierHistory', String(token || ''), Number(limit || 50)); }
   claimTask(token, id) { return this.transport.call('stage3ClaimTask', String(token || ''), String(id || '')); }
   completeVerified(token, id, payload) { return this.transport.call('stage3CompleteVerified', String(token || ''), String(id || ''), payload || {}); }
   failTask(token, id, payload) { return this.transport.call('stage3FailTask', String(token || ''), String(id || ''), payload || {}); }
   reportIncident(token, payload) { return this.transport.call('stage3ReportIncident', String(token || ''), payload || {}); }
-  resolveIncident(token, incidentId, resolutionNote) { return this.transport.call('stage3ResolveIncident', String(token || ''), String(incidentId || ''), String(resolutionNote || '')); }
+  resolveIncident(token, incidentId, note) { return this.transport.call('stage3ResolveIncident', String(token || ''), String(incidentId || ''), String(note || '')); }
 
+  adminBootstrap(token) { return this.transport.call('stage4AdminBootstrap', String(token || '')); }
+  adminRows(token, search = '') { return this.transport.call('stage4AdminRows', String(token || ''), String(search || '')); }
+  adminUpdateStatus(token, id, status, note = '') { return this.transport.call('stage4AdminUpdateStatus', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
+  adminPendingVerifications(token) { return this.transport.call('stage4PendingReceiptVerifications', String(token || '')); }
+  adminManualReceiptWa(token, id) { return this.transport.call('stage4ManualReceiptWa', String(token || ''), String(id || '')); }
+  adminManualVerifyReceipt(token, id, method, note) { return this.transport.call('stage4ManualVerifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || '')); }
+  adminIncidents(token) { return this.transport.call('stage4Incidents', String(token || '')); }
+  adminVerifyIncident(token, id, status, note) { return this.transport.call('stage4VerifyIncident', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
+  adminArchiveHealth(token) { return this.transport.call('stage4ArchiveHealth', String(token || '')); }
+  adminRefreshMaster(token) { return this.transport.call('stage4RefreshMaster', String(token || '')); }
+  adminAuditRows(token, limit = 100) { return this.transport.call('stage4AuditRows', String(token || ''), Number(limit || 100)); }
 }

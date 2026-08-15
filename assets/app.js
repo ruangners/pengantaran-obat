@@ -2,6 +2,7 @@ import { APP_CONFIG } from './config.js';
 import { AppsScriptFormTransport, PengantaranApi } from './api-client.js';
 import { createFarmasiModule } from './farmasi.js';
 import { createCourierModule } from './courier.js';
+import { createAdminModule } from './admin.js';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false };
@@ -79,6 +80,19 @@ const courier = createCourierModule({
   showToast
 });
 
+const admin = createAdminModule({
+  escapeHtml,
+  getApi:()=>state.api,
+  getToken:()=>state.session?.token||'',
+  getUser:()=>state.session?.user||null,
+  getView:()=>state.view,
+  navigate:openView,
+  openModal,
+  closeModal,
+  confirmAction,
+  showToast
+});
+
 function initTransport(endpoint){
   if(state.transport) state.transport.destroy();
   state.endpoint=endpoint;
@@ -125,7 +139,7 @@ async function restoreSession(){
 
 async function logout(){
   const token=state.session?.token;try{if(token&&state.api)await state.api.logout(token);}catch(_){}
-  farmasi.resetForLogout(); courier.resetForLogout(); state.session=null;sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');setTimeout(()=>$('pin').focus(),80);
+  farmasi.resetForLogout(); courier.resetForLogout(); admin.resetForLogout(); state.session=null;sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');setTimeout(()=>$('pin').focus(),80);
 }
 
 function buildNav(){
@@ -160,6 +174,15 @@ function openView(view){
     if(view==='tasks') return courier.renderTasks();
     if(view==='history') return courier.renderHistory();
   }
+  if(role==='ADMIN'){
+    if(view==='home') return admin.renderHome();
+    if(view==='operations') return admin.renderOperations();
+    if(view==='verification') return admin.renderVerification();
+    if(view==='incidents') return admin.renderIncidents();
+    if(view==='archive') return admin.renderArchive();
+    if(view==='master') return admin.renderMaster();
+    if(view==='audit') return admin.renderAudit();
+  }
   if(view==='account') return void ($('pageContent').innerHTML=renderAccount());
   if(view==='home') return void ($('pageContent').innerHTML=renderRoleHome());
   $('pageContent').innerHTML=renderPlaceholder(view,title);
@@ -178,7 +201,7 @@ function renderRoleHome(){
   <section class="section"><div class="placeholder"><div class="placeholder-icon">⌁</div><div><h3>Modul ${escapeHtml(label)} masuk tahap berikutnya</h3><p>Struktur navigasi sudah final. Fungsi operasional akan dihubungkan tanpa mengubah cara pengguna berpindah menu.</p></div></div></section>`;
 }
 function metric(label,value,note){return `<div class="card metric-card"><div class="metric-top"><span>${escapeHtml(label)}</span></div><div class="metric-value">${escapeHtml(value)}</div><div class="metric-note">${escapeHtml(note)}</div></div>`;}
-function renderPlaceholder(view,title){return `<section class="hero compact"><div><div class="eyebrow">STRUKTUR TETAP</div><h1>${escapeHtml(title)}</h1><p>Posisi menu dipertahankan agar pengguna tidak perlu menyesuaikan navigasi saat modul ini diaktifkan.</p></div></section><section class="section"><div class="placeholder"><div class="placeholder-icon">⌁</div><div><h3>Fungsi belum diaktifkan</h3><p>Modul ${escapeHtml(title)} akan dihubungkan pada tahap berikutnya. Tahap 3 mengaktifkan modul Kurir dengan tetap mempertahankan struktur dan workflow Produksi V1.</p></div></div></section>`;}
+function renderPlaceholder(view,title){return `<section class="hero compact"><div><div class="eyebrow">STRUKTUR TETAP</div><h1>${escapeHtml(title)}</h1><p>Posisi menu dipertahankan agar pengguna tidak perlu menyesuaikan navigasi saat modul ini diaktifkan.</p></div></section><section class="section"><div class="placeholder"><div class="placeholder-icon">⌁</div><div><h3>Fungsi belum diaktifkan</h3><p>Modul ${escapeHtml(title)} akan dihubungkan pada tahap berikutnya. Tahap 2 memfokuskan migrasi penuh pada Farmasi.</p></div></div></section>`;}
 function renderAccount(){const u=state.session.user;return `<section class="hero compact"><div><div class="eyebrow">AKUN PETUGAS</div><h1>${escapeHtml(u.name)}</h1><p>Role dan identitas sesi berasal dari backend Apps Script. PIN tidak disimpan pada GitHub Pages.</p></div></section><section class="section"><div class="grid grid-2"><div class="card"><div class="metric-top"><span>ROLE</span></div><div class="metric-value">${escapeHtml(u.role)}</div><div class="metric-note">Hak akses tetap diperiksa backend.</div></div><div class="card"><div class="metric-top"><span>EMAIL</span></div><div class="account-email">${escapeHtml(u.email||'-')}</div><div class="metric-note">Sumber: sheet AKSES Produksi V1.</div></div></div></section>`;}
 
 async function boot(){
