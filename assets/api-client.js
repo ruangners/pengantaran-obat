@@ -189,6 +189,11 @@ export class PengantaranApi {
   farmasiBootstrap(token) { return this._read('stage2FarmasiBootstrap', String(token || '')); }
   farmasiRows(token, searchText = '') { return this._read('stage2FarmasiRows', String(token || ''), String(searchText || '')); }
   pendingReceiptVerifications(token) { return this._read('stage2PendingReceiptVerifications', String(token || '')); }
+  failedDeliveryFollowUps(token) { return this._read('stage6B1FailedFollowUps', String(token || '')); }
+  confirmReturnedToFarmasi(token, id) { return this._mutate('stage6B1ConfirmReturn', String(token || ''), String(id || '')); }
+  rescheduleDelivery(token, id, payload) { return this._mutate('stage6B1Reschedule', String(token || ''), String(id || ''), payload || {}); }
+  closeFailedDelivery(token, id, note) { return this._mutate('stage6B1CloseService', String(token || ''), String(id || ''), String(note || '')); }
+  attemptHistory(token, id) { return this._read('stage6B1AttemptHistory', String(token || ''), String(id || '')); }
   refreshFarmasiMaster(token) { return this._read('stage2RefreshFarmasiMaster', String(token || '')); }
   createDelivery(token, payload) { return this._mutate('stage2CreateDelivery', String(token || ''), payload || {}); }
   updateFarmasiRecord(token, id, payload) { return this._mutate('stage2UpdateFarmasiRecord', String(token || ''), String(id || ''), payload || {}); }

@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=6.0.0-6b';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.0.0-6b';
-import { createFarmasiModule } from './farmasi.js?v=6.0.0-6b';
-import { createCourierModule } from './courier.js?v=6.0.0-6b';
-import { createAdminModule } from './admin.js?v=6.0.0-6b';
-import { createManagementModule } from './management.js?v=6.0.0-6b';
+import { APP_CONFIG } from './config.js?v=6.1.0-6b1';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.0-6b1';
+import { createFarmasiModule } from './farmasi.js?v=6.1.0-6b1';
+import { createCourierModule } from './courier.js?v=6.1.0-6b1';
+import { createAdminModule } from './admin.js?v=6.1.0-6b1';
+import { createManagementModule } from './management.js?v=6.1.0-6b1';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false, backendInfo:null, activeRequests:0, lastSessionCheck:0, authResetting:false, updateRegistration:null, updateRequested:false };
