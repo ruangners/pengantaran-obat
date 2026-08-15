@@ -3,6 +3,7 @@ import { AppsScriptFormTransport, PengantaranApi } from './api-client.js';
 import { createFarmasiModule } from './farmasi.js';
 import { createCourierModule } from './courier.js';
 import { createAdminModule } from './admin.js';
+import { createManagementModule } from './management.js';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false };
@@ -93,6 +94,19 @@ const admin = createAdminModule({
   showToast
 });
 
+const management = createManagementModule({
+  escapeHtml,
+  getApi:()=>state.api,
+  getToken:()=>state.session?.token||'',
+  getUser:()=>state.session?.user||null,
+  getView:()=>state.view,
+  navigate:openView,
+  openModal,
+  closeModal,
+  confirmAction,
+  showToast
+});
+
 function initTransport(endpoint){
   if(state.transport) state.transport.destroy();
   state.endpoint=endpoint;
@@ -139,7 +153,7 @@ async function restoreSession(){
 
 async function logout(){
   const token=state.session?.token;try{if(token&&state.api)await state.api.logout(token);}catch(_){}
-  farmasi.resetForLogout(); courier.resetForLogout(); admin.resetForLogout(); state.session=null;sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');setTimeout(()=>$('pin').focus(),80);
+  farmasi.resetForLogout(); courier.resetForLogout(); admin.resetForLogout(); management.resetForLogout(); state.session=null;sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');setTimeout(()=>$('pin').focus(),80);
 }
 
 function buildNav(){
@@ -157,8 +171,8 @@ function showApp(){
 
 function openView(view){
   state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
-  const [title,sub]=PAGE_META[view]||['Menu','Pengantaran Obat Gratis'];$('pageTitle').textContent=title;$('pageSubtitle').textContent=sub;
   const role=state.session?.user?.role;
+  const [title,sub]=(role==='MANAJEMEN'&&view==='home')?['Ringkasan','KPI layanan dan mutu pengantaran obat']:(PAGE_META[view]||['Menu','Pengantaran Obat Gratis']);$('pageTitle').textContent=title;$('pageSubtitle').textContent=sub;
   $('pageContent').innerHTML=''; window.scrollTo({top:0,behavior:'auto'});
 
   if(role==='FARMASI'){
@@ -182,6 +196,12 @@ function openView(view){
     if(view==='archive') return admin.renderArchive();
     if(view==='master') return admin.renderMaster();
     if(view==='audit') return admin.renderAudit();
+  }
+  if(role==='MANAJEMEN'){
+    if(view==='home') return management.renderHome();
+    if(view==='performance') return management.renderPerformance();
+    if(view==='areas') return management.renderAreas();
+    if(view==='reports') return management.renderReports();
   }
   if(view==='account') return void ($('pageContent').innerHTML=renderAccount());
   if(view==='home') return void ($('pageContent').innerHTML=renderRoleHome());

@@ -160,4 +160,8 @@ export class PengantaranApi {
   adminArchiveHealth(token) { return this.transport.call('stage4ArchiveHealth', String(token || '')); }
   adminRefreshMaster(token) { return this.transport.call('stage4RefreshMaster', String(token || '')); }
   adminAuditRows(token, limit = 100) { return this.transport.call('stage4AuditRows', String(token || ''), Number(limit || 100)); }
+
+  managementData(token, startDate, endDate, basis = 'DAFTAR') {
+    return this.transport.call('stage5ManagementData', String(token || ''), String(startDate || ''), String(endDate || ''), String(basis || 'DAFTAR'));
+  }
 }
