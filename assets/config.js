@@ -1,7 +1,7 @@
 export const APP_CONFIG = Object.freeze({
   appName: 'Pengantaran Obat Gratis',
   organization: 'RSUD Provinsi Nusa Tenggara Barat',
-  version: '5.0.0-stage5-manajemen',
+  version: '5.0.1-stage5-hf1-cachefix',
   // Untuk trial, URL /exec tetap disimpan di browser sehingga tidak perlu ditaruh sebagai secret.
   backendUrl: '',
   backendStorageKey: 'antarobat_backend_url',

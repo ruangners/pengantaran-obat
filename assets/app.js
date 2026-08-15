@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js';
-import { createFarmasiModule } from './farmasi.js';
-import { createCourierModule } from './courier.js';
-import { createAdminModule } from './admin.js';
-import { createManagementModule } from './management.js';
+import { APP_CONFIG } from './config.js?v=5.0.1-hf1';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=5.0.1-hf1';
+import { createFarmasiModule } from './farmasi.js?v=5.0.1-hf1';
+import { createCourierModule } from './courier.js?v=5.0.1-hf1';
+import { createAdminModule } from './admin.js?v=5.0.1-hf1';
+import { createManagementModule } from './management.js?v=5.0.1-hf1';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false };
@@ -164,14 +164,15 @@ function buildNav(){
 }
 
 function showApp(){
-  const u=state.session.user;$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+  const u=state.session.user;
+  u.role=String(u.role||'').trim().toUpperCase();$('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
   $('sideUserName').textContent=u.name;$('sideUserRole').textContent=u.role;$('roleChip').textContent=u.role;$('avatar').textContent=initials(u.name);
   buildNav();openView('home');
 }
 
 function openView(view){
   state.view=view;document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
-  const role=state.session?.user?.role;
+  const role=String(state.session?.user?.role||'').trim().toUpperCase();
   const [title,sub]=(role==='MANAJEMEN'&&view==='home')?['Ringkasan','KPI layanan dan mutu pengantaran obat']:(PAGE_META[view]||['Menu','Pengantaran Obat Gratis']);$('pageTitle').textContent=title;$('pageSubtitle').textContent=sub;
   $('pageContent').innerHTML=''; window.scrollTo({top:0,behavior:'auto'});
 
@@ -232,6 +233,7 @@ async function boot(){
   const restored=state.backendReady?await restoreSession():false;
   if(!restored)$('loginView').classList.remove('hidden');$('loading').classList.add('hidden');
   if(!endpoint)setTimeout(openBackendModal,250);
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=5.0.1-hf1',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});}
 }
+console.info('[Pengantaran Obat] Frontend build 5.0.1-stage5-hf1-cachefix');
 boot();
