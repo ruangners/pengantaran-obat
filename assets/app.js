@@ -1,12 +1,12 @@
-import { APP_CONFIG } from './config.js?v=5.0.1-hf1';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=5.0.1-hf1';
-import { createFarmasiModule } from './farmasi.js?v=5.0.1-hf1';
-import { createCourierModule } from './courier.js?v=5.0.1-hf1';
-import { createAdminModule } from './admin.js?v=5.0.1-hf1';
-import { createManagementModule } from './management.js?v=5.0.1-hf1';
+import { APP_CONFIG } from './config.js?v=6.0.0-6b';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.0.0-6b';
+import { createFarmasiModule } from './farmasi.js?v=6.0.0-6b';
+import { createCourierModule } from './courier.js?v=6.0.0-6b';
+import { createAdminModule } from './admin.js?v=6.0.0-6b';
+import { createManagementModule } from './management.js?v=6.0.0-6b';
 
 const $ = id => document.getElementById(id);
-const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false };
+const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false, backendInfo:null, activeRequests:0, lastSessionCheck:0, authResetting:false, updateRegistration:null, updateRequested:false };
 
 const NAV = {
   FARMASI: [
@@ -34,6 +34,51 @@ function getEndpoint(){return String(APP_CONFIG.backendUrl || localStorage.getIt
 function saveEndpoint(url){localStorage.setItem(APP_CONFIG.backendStorageKey,String(url||'').trim());}
 function showAlert(target,text,type='error'){target.innerHTML=text?`<div class="alert ${type}">${escapeHtml(text)}</div>`:'';}
 function setBackendState(ready,message){state.backendReady=ready;const el=$('backendState');if(!el)return;el.innerHTML=`<span class="dot ${ready?'ok':'bad'}"></span><span>${escapeHtml(message)}</span>`;}
+
+function setRequestState({active=false}={}){
+  state.activeRequests=Math.max(0,state.activeRequests+(active?1:-1));
+  const bar=$('requestBar'); if(!bar)return;
+  bar.classList.toggle('active',state.activeRequests>0);
+}
+
+function updateConnectivity(){
+  const offline=!navigator.onLine; const banner=$('networkBanner');
+  if(banner) banner.classList.toggle('hidden',!offline);
+  if(offline) setBackendState(false,'Perangkat offline');
+}
+
+function clearLocalSession(){
+  farmasi.resetForLogout(); courier.resetForLogout(); admin.resetForLogout(); management.resetForLogout();
+  state.session=null; state.lastSessionCheck=0; sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);
+}
+
+function showLogin(message=''){
+  clearLocalSession(); closeModal();
+  $('appView').classList.add('hidden'); $('loginView').classList.remove('hidden');
+  if(message) showAlert($('loginMessage'),message,'error');
+  setTimeout(()=>$('pin')?.focus(),80);
+}
+
+function handleSessionExpired(err){
+  if(state.authResetting)return; state.authResetting=true;
+  showLogin('Sesi Anda telah berakhir. Silakan masuk kembali. Data yang belum mendapat konfirmasi berhasil dari server tidak dianggap tersimpan.');
+  showToast('Sesi berakhir. Silakan masuk kembali.','warning',6000);
+  setTimeout(()=>{state.authResetting=false;},300);
+}
+
+async function recheckSession(force=false){
+  if(!state.session?.token||!state.api||!navigator.onLine)return false;
+  const now=Date.now(); if(!force&&now-state.lastSessionCheck<APP_CONFIG.sessionRecheckMs)return true;
+  try{
+    const result=await state.api.session(state.session.token);
+    state.session.user=result.data.user; state.lastSessionCheck=now;
+    sessionStorage.setItem(APP_CONFIG.sessionStorageKey,JSON.stringify(state.session));
+    return true;
+  }catch(e){
+    if(e.code==='SESSION_EXPIRED') handleSessionExpired(e);
+    return false;
+  }
+}
 
 function showToast(message, type='info', timeout=4200){
   const box=$('toastContainer'); if(!box || !message)return;
@@ -110,14 +155,14 @@ const management = createManagementModule({
 function initTransport(endpoint){
   if(state.transport) state.transport.destroy();
   state.endpoint=endpoint;
-  state.transport=new AppsScriptFormTransport({endpoint,onState:s=>setBackendState(Boolean(s.ready),s.message)});
-  state.api=new PengantaranApi(state.transport);
+  state.transport=new AppsScriptFormTransport({endpoint,timeoutMs:APP_CONFIG.transportTimeoutMs,expectedContract:APP_CONFIG.apiContract,onState:s=>setBackendState(Boolean(s.ready),s.message),onAuthError:handleSessionExpired,onRequestState:setRequestState});
+  state.api=new PengantaranApi(state.transport,{readRetryCount:APP_CONFIG.readRetryCount,readRetryDelayMs:APP_CONFIG.readRetryDelayMs,mutationReplayWindowMs:APP_CONFIG.mutationReplayWindowMs,mutationBusyRetryCount:APP_CONFIG.mutationBusyRetryCount,mutationBusyRetryDelayMs:APP_CONFIG.mutationBusyRetryDelayMs});
 }
 
 async function connectBackend(endpoint=getEndpoint()){
   if(!endpoint){setBackendState(false,'Backend belum dikonfigurasi');return false;}
   initTransport(endpoint);
-  try{await state.transport.connect();return true;}catch(e){setBackendState(false,e.message);return false;}
+  try{const result=await state.transport.connect();state.backendInfo=result?.data||null;return true;}catch(e){state.backendInfo=null;setBackendState(false,e.message);if(e?.code==='VERSION_MISMATCH')showToast(e.message,'warning',9000);return false;}
 }
 
 function openBackendModal(){ $('backendUrl').value=getEndpoint();showAlert($('backendModalMessage'),'');$('backendModal').classList.remove('hidden');setTimeout(()=>$('backendUrl').focus(),50); }
@@ -139,7 +184,7 @@ async function login(ev){
   $('loginButton').disabled=true;$('loginButton').textContent='Memeriksa…';
   try{
     const result=await state.api.login(pin,{clientId:getClientId(),userAgent:navigator.userAgent,origin:location.origin});
-    state.session={token:result.data.token,user:result.data.user};
+    state.session={token:result.data.token,user:result.data.user}; state.lastSessionCheck=Date.now();
     sessionStorage.setItem(APP_CONFIG.sessionStorageKey,JSON.stringify(state.session));
     $('pin').value='';showApp();
   }catch(e){showAlert($('loginMessage'),e.message);}
@@ -148,12 +193,14 @@ async function login(ev){
 
 async function restoreSession(){
   const raw=sessionStorage.getItem(APP_CONFIG.sessionStorageKey);if(!raw)return false;
-  try{const saved=JSON.parse(raw);if(!saved?.token)return false;const result=await state.api.session(saved.token);state.session={token:saved.token,user:result.data.user};sessionStorage.setItem(APP_CONFIG.sessionStorageKey,JSON.stringify(state.session));showApp();return true;}catch(_){sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);return false;}
+  try{const saved=JSON.parse(raw);if(!saved?.token)return false;const result=await state.api.session(saved.token);state.session={token:saved.token,user:result.data.user};state.lastSessionCheck=Date.now();sessionStorage.setItem(APP_CONFIG.sessionStorageKey,JSON.stringify(state.session));showApp();return true;}catch(e){sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);if(e?.code==='SESSION_EXPIRED')showAlert($('loginMessage'),'Sesi sebelumnya telah berakhir. Silakan masuk kembali.','info');return false;}
 }
 
 async function logout(){
-  const token=state.session?.token;try{if(token&&state.api)await state.api.logout(token);}catch(_){}
-  farmasi.resetForLogout(); courier.resetForLogout(); admin.resetForLogout(); management.resetForLogout(); state.session=null;sessionStorage.removeItem(APP_CONFIG.sessionStorageKey);$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');setTimeout(()=>$('pin').focus(),80);
+  const token=state.session?.token; const btn=$('logoutButton'); if(btn){btn.disabled=true;btn.textContent='Keluar…';}
+  try{if(token&&state.api&&navigator.onLine)await state.api.logout(token);}catch(_){}
+  showLogin('');
+  if(btn){btn.disabled=false;btn.textContent='Keluar';}
 }
 
 function buildNav(){
@@ -223,17 +270,56 @@ function renderRoleHome(){
 }
 function metric(label,value,note){return `<div class="card metric-card"><div class="metric-top"><span>${escapeHtml(label)}</span></div><div class="metric-value">${escapeHtml(value)}</div><div class="metric-note">${escapeHtml(note)}</div></div>`;}
 function renderPlaceholder(view,title){return `<section class="hero compact"><div><div class="eyebrow">STRUKTUR TETAP</div><h1>${escapeHtml(title)}</h1><p>Posisi menu dipertahankan agar pengguna tidak perlu menyesuaikan navigasi saat modul ini diaktifkan.</p></div></section><section class="section"><div class="placeholder"><div class="placeholder-icon">⌁</div><div><h3>Fungsi belum diaktifkan</h3><p>Modul ${escapeHtml(title)} akan dihubungkan pada tahap berikutnya. Tahap 2 memfokuskan migrasi penuh pada Farmasi.</p></div></div></section>`;}
-function renderAccount(){const u=state.session.user;return `<section class="hero compact"><div><div class="eyebrow">AKUN PETUGAS</div><h1>${escapeHtml(u.name)}</h1><p>Role dan identitas sesi berasal dari backend Apps Script. PIN tidak disimpan pada GitHub Pages.</p></div></section><section class="section"><div class="grid grid-2"><div class="card"><div class="metric-top"><span>ROLE</span></div><div class="metric-value">${escapeHtml(u.role)}</div><div class="metric-note">Hak akses tetap diperiksa backend.</div></div><div class="card"><div class="metric-top"><span>EMAIL</span></div><div class="account-email">${escapeHtml(u.email||'-')}</div><div class="metric-note">Sumber: sheet AKSES Produksi V1.</div></div></div></section>`;}
+function renderAccount(){const u=state.session.user;return `<section class="hero compact"><div><div class="eyebrow">AKUN PETUGAS</div><h1>${escapeHtml(u.name)}</h1><p>Role dan identitas sesi berasal dari backend Apps Script. PIN tidak disimpan pada GitHub Pages.</p></div></section><section class="section"><div class="grid grid-2"><div class="card"><div class="metric-top"><span>ROLE</span></div><div class="metric-value">${escapeHtml(u.role)}</div><div class="metric-note">Hak akses tetap diperiksa backend.</div></div><div class="card"><div class="metric-top"><span>EMAIL</span></div><div class="account-email">${escapeHtml(u.email||'-')}</div><div class="metric-note">Sumber: sheet AKSES Produksi V1.</div></div><div class="card"><div class="metric-top"><span>VERSI FRONTEND</span></div><div class="account-email">${escapeHtml(APP_CONFIG.version)}</div><div class="metric-note">GitHub Pages • update aman tanpa reload mendadak.</div></div><div class="card"><div class="metric-top"><span>VERSI BACKEND</span></div><div class="account-email">${escapeHtml(state.backendInfo?.version||'-')}</div><div class="metric-note">Kontrak ${escapeHtml(state.backendInfo?.apiContract||'-')} • ${navigator.onLine?'ONLINE':'OFFLINE'}.</div></div></div></section>`;}
+
+
+function showUpdateAvailable(registration){
+  state.updateRegistration=registration||state.updateRegistration;
+  const banner=$('updateBanner'); if(!banner)return;
+  banner.classList.remove('hidden');
+}
+
+function hideUpdateAvailable(){ $('updateBanner')?.classList.add('hidden'); }
+
+async function applyAppUpdate(){
+  const reg=state.updateRegistration || await navigator.serviceWorker.getRegistration();
+  if(!reg?.waiting){hideUpdateAvailable();location.reload();return;}
+  state.updateRequested=true;
+  $('applyUpdateButton').disabled=true;$('applyUpdateButton').textContent='Memperbarui…';
+  reg.waiting.postMessage({type:'SKIP_WAITING'});
+}
+
+async function registerServiceWorker(){
+  if(!('serviceWorker' in navigator))return;
+  const reg=await navigator.serviceWorker.register('./sw.js?v=6.0.0-6b',{updateViaCache:'none'});
+  state.updateRegistration=reg;
+  if(reg.waiting && navigator.serviceWorker.controller) showUpdateAvailable(reg);
+  reg.addEventListener('updatefound',()=>{
+    const worker=reg.installing;if(!worker)return;
+    worker.addEventListener('statechange',()=>{
+      if(worker.state==='installed' && navigator.serviceWorker.controller) showUpdateAvailable(reg);
+    });
+  });
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(state.updateRequested) location.reload();
+  });
+  try{await reg.update();}catch(_){}
+}
 
 async function boot(){
   $('openBackendSetup').addEventListener('click',openBackendModal);$('backendButton').addEventListener('click',openBackendModal);$('closeBackendSetup').addEventListener('click',closeBackendModal);$('saveBackendSetup').addEventListener('click',saveBackend);$('backendModal').addEventListener('click',e=>{if(e.target===$('backendModal'))closeBackendModal();});
   $('appModal').addEventListener('click',e=>{if(e.target===$('appModal'))closeModal();});
-  $('loginForm').addEventListener('submit',login);$('logoutButton').addEventListener('click',logout);$('togglePin').addEventListener('click',()=>{const input=$('pin');input.type=input.type==='password'?'text':'password';});
-  const endpoint=getEndpoint();if(endpoint)await connectBackend(endpoint);
+  $('loginForm').addEventListener('submit',login);$('logoutButton').addEventListener('click',logout);$('togglePin').addEventListener('click',()=>{const input=$('pin');input.type=input.type==='password'?'text':'password';});$('applyUpdateButton')?.addEventListener('click',applyAppUpdate);
+  window.addEventListener('offline',()=>{updateConnectivity();showToast('Koneksi internet terputus. Aksi baru tidak akan dikirim sampai perangkat online.','warning',7000);});
+  window.addEventListener('online',async()=>{updateConnectivity();showToast('Koneksi internet kembali. Memeriksa server…','info');if(getEndpoint())await connectBackend(getEndpoint());if(state.session)await recheckSession(true);});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.session)recheckSession(false);});
+  updateConnectivity();
+  const endpoint=getEndpoint();if(endpoint&&navigator.onLine)await connectBackend(endpoint);
   const restored=state.backendReady?await restoreSession():false;
   if(!restored)$('loginView').classList.remove('hidden');$('loading').classList.add('hidden');
   if(!endpoint)setTimeout(openBackendModal,250);
-  if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=5.0.1-hf1',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});}
+  registerServiceWorker().catch(()=>{});
 }
-console.info('[Pengantaran Obat] Frontend build 5.0.1-stage5-hf1-cachefix');
+console.info('[Pengantaran Obat] Frontend build 6.0.0-stage6b-hardening');
+window.addEventListener('unhandledrejection',event=>{const e=event.reason;if(e?.code==='SESSION_EXPIRED')return;console.error('[Pengantaran Obat] Unhandled promise rejection:',e?.code||'ERROR',e?.message||String(e));});
 boot();
