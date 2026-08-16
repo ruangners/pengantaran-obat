@@ -212,6 +212,7 @@ export class PengantaranApi {
   courierHistory(token, limit = 50) { return this._read('stage3CourierHistory', String(token || ''), Number(limit || 50)); }
   claimTask(token, id) { return this._mutate('stage3ClaimTask', String(token || ''), String(id || '')); }
   completeVerified(token, id, payload) { return this._mutate('stage3CompleteVerified', String(token || ''), String(id || ''), payload || {}); }
+  pendingTask(token, id, payload) { return this._mutate('stage6B1PendingTask', String(token || ''), String(id || ''), payload || {}); }
   failTask(token, id, payload) { return this._mutate('stage3FailTask', String(token || ''), String(id || ''), payload || {}); }
   reportIncident(token, payload) { return this._mutate('stage3ReportIncident', String(token || ''), payload || {}); }
   resolveIncident(token, incidentId, note) { return this._mutate('stage3ResolveIncident', String(token || ''), String(incidentId || ''), String(note || '')); }

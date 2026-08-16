@@ -185,7 +185,7 @@ export function createCourierModule(ctx) {
       return;
     }
     const groups = routeGroups(rows);
-    box.innerHTML = `<div class="route-groups">${groups.map(g => `<section class="route-group"><div class="route-group-head"><div><div class="eyebrow">${esc(g.district || g.region || 'WILAYAH')}</div><h3>${esc(g.village || '-')}</h3><p>${esc(g.region || '')}</p></div><span>${g.items.length} paket</span></div><div class="ready-package-list">${g.items.map(r => `<div class="ready-package"><div class="ready-package-main"><strong>${esc(shortId(r.id))}</strong>${r.isRetry?`<span class="retry-chip">PENGANTARAN ULANG • Attempt ${Number(r.attemptNo||2)}</span>`:''}<small>Siap ${esc(timeOnly(r.readyAt))}${r.coverageStatus ? ` • ${esc(r.coverageStatus)}` : ''}</small>${r.courierNote?`<div class="courier-note-preview"><span>CATATAN FARMASI</span><p>${esc(r.courierNote)}</p></div>`:''}</div><button class="primary-btn compact-btn" data-claim="${esc(r.id)}">Ambil Tugas</button></div>`).join('')}</div></section>`).join('')}</div>`;
+    box.innerHTML = `<div class="route-groups">${groups.map(g => `<section class="route-group"><div class="route-group-head"><div><div class="eyebrow">${esc(g.district || g.region || 'WILAYAH')}</div><h3>${esc(g.village || '-')}</h3><p>${esc(g.region || '')}</p></div><span>${g.items.length} paket</span></div><div class="ready-card-grid">${g.items.map(r => `<article class="ready-route-card"><div class="ready-route-top"><strong>${esc(shortId(r.id))}</strong><div>${r.isRetry?`<span class="retry-chip">PENGANTARAN ULANG • Attempt ${Number(r.attemptNo||2)}</span>`:''}</div></div><div class="ready-location-block"><span>LOKASI</span><h4>${esc(r.village || '-')}</h4><p>${esc([r.district,r.region].filter(Boolean).join(' • ') || '-')}</p><small>Siap ${esc(timeOnly(r.readyAt))}${r.coverageStatus ? ` • ${esc(r.coverageStatus)}` : ''}</small></div>${r.courierNote?`<div class="courier-note-preview"><span>CATATAN FARMASI</span><p>${esc(r.courierNote)}</p></div>`:''}<button class="primary-btn ready-claim-btn" data-claim="${esc(r.id)}">Ambil Tugas</button></article>`).join('')}</div></section>`).join('')}</div>`;
     box.querySelectorAll('[data-claim]').forEach(btn => btn.addEventListener('click', () => claimReady(btn.dataset.claim, btn)));
   }
 
@@ -248,24 +248,26 @@ export function createCourierModule(ctx) {
     }
     box.innerHTML = `<div class="courier-task-grid">${state.mine.map(taskCard).join('')}</div>`;
     box.querySelectorAll('[data-complete]').forEach(btn => btn.addEventListener('click', () => openCompletion(btn.dataset.complete)));
+    box.querySelectorAll('[data-pending]').forEach(btn => btn.addEventListener('click', () => openPending(btn.dataset.pending)));
     box.querySelectorAll('[data-fail]').forEach(btn => btn.addEventListener('click', () => openFailure(btn.dataset.fail)));
-    box.querySelectorAll('[data-resume]').forEach(btn => btn.addEventListener('click', () => resumeAfterFailure(btn.dataset.resume, btn)));
+    box.querySelectorAll('[data-resume]').forEach(btn => btn.addEventListener('click', () => resumePending(btn.dataset.resume, btn)));
   }
 
   function taskCard(r) {
     const maps = safeHref(r.mapsUrl), wa = safeHref(r.waUrl), phone = safeHref(r.phoneUrl);
-    const provisional = Boolean(r.failureReported);
-    const statusHtml = provisional ? `${badge('GAGAL DILAPORKAN','warning')}${r.incidentStatus === 'TERKENDALA' ? ` ${badge('TERKENDALA','warning')}` : ''}` : `${badge(r.status,statusClass(r.status))}${r.incidentStatus === 'TERKENDALA' ? ` ${badge('TERKENDALA','warning')}` : ''}`;
-    const provisionalBox = provisional ? `<div class="failure-reported-box"><strong>⚠ Gagal antar telah dilaporkan</strong><p>${esc(r.failureReason||'Kendala pengantaran')} ${r.failureDetail?`• ${esc(r.failureDetail)}`:''}</p><small>Obat wajib dikembalikan ke Farmasi. Jika pasien/penerima ditemukan sebelum Farmasi mengonfirmasi obat kembali, pengantaran masih dapat dilanjutkan pada attempt yang sama.</small></div>` : '';
-    const mainActions = provisional ? `<div class="task-main-actions"><button class="primary-btn" data-resume="${esc(r.id)}">↻ Lanjutkan Pengantaran</button></div>` : `<div class="task-main-actions"><button class="primary-btn" data-complete="${esc(r.id)}">✓ Selesaikan Pengantaran</button><button class="danger-soft-btn" data-fail="${esc(r.id)}">Gagal Antar</button></div>`;
-    return `<article class="courier-task-card ${r.incidentStatus === 'TERKENDALA' ? 'has-incident' : ''} ${provisional?'failure-reported':''}"><div class="task-card-head"><div>${statusHtml}</div><small>${esc(shortId(r.id))}</small></div>${r.isRetry?`<div class="retry-chip task-retry">PENGANTARAN ULANG • Attempt ${Number(r.attemptNo||2)}</div>`:''}<h3>${esc(r.name || '-')}</h3><div class="task-area">${esc(areaText(r))}</div>${r.courierNote?`<div class="courier-note-task"><span>CATATAN FARMASI</span><p>${esc(r.courierNote)}</p></div>`:''}<div class="task-address"><span>Alamat</span><strong>${esc(r.address || '-')}</strong>${r.landmark ? `<p><b>Patokan:</b> ${esc(r.landmark)}</p>` : ''}</div><div class="task-meta"><span>Penerima rencana</span><b>${esc(r.plannedRecipient || r.name || '-')}</b><span>Diambil</span><b>${esc(timeOnly(r.claimedAt))}</b></div><div class="contact-actions"><a class="contact-btn maps" href="${esc(maps)}" target="_blank" rel="noopener">⌖ Maps</a><a class="contact-btn wa" href="${esc(wa)}" target="_blank" rel="noopener">WA</a><a class="contact-btn phone" href="${esc(phone)}">☎ Telepon</a></div>${provisionalBox}${mainActions}</article>`;
+    const failed = Boolean(r.failureReported);
+    const pending = Boolean(r.pending) && !failed;
+    const statusHtml = failed ? `${badge('GAGAL ANTAR','failed')}${r.incidentStatus === 'TERKENDALA' ? ` ${badge('TERKENDALA','warning')}` : ''}` : pending ? `${badge('PENDING','warning')}${r.incidentStatus === 'TERKENDALA' ? ` ${badge('TERKENDALA','warning')}` : ''}` : `${badge(r.status,statusClass(r.status))}${r.incidentStatus === 'TERKENDALA' ? ` ${badge('TERKENDALA','warning')}` : ''}`;
+    const stateBox = failed ? `<div class="failure-reported-box"><strong>⚠ Gagal Antar</strong><p>${esc(r.failureReason||'Kendala pengantaran')}${r.failureDetail?` • ${esc(r.failureDetail)}`:''}</p><small>Pengantaran hari ini selesai. Kembalikan obat ke Farmasi untuk konfirmasi pengembalian dan tindak lanjut berikutnya.</small></div>` : pending ? `<div class="pending-delivery-box"><strong>⏸ PENDING</strong><p>${esc(r.pendingReason||'Pengantaran belum dapat diselesaikan')}${r.pendingDetail?` • ${esc(r.pendingDetail)}`:''}</p><small>Paket tetap dibawa oleh Kurir. Lanjutkan bila akan mencoba pengantaran kembali hari ini, atau pilih Gagal Antar bila sudah tidak memungkinkan.</small></div>` : '';
+    const mainActions = failed ? `<div class="task-main-actions"><span class="return-reminder">Kembalikan obat ke Farmasi</span></div>` : pending ? `<div class="task-main-actions"><button class="primary-btn" data-resume="${esc(r.id)}">↻ Lanjut Antar</button><button class="danger-soft-btn" data-fail="${esc(r.id)}">Gagal Antar</button></div>` : `<div class="task-main-actions"><button class="primary-btn" data-complete="${esc(r.id)}">✓ Selesaikan Pengantaran</button><button class="pending-btn" data-pending="${esc(r.id)}">⏸ Pending</button><button class="danger-soft-btn" data-fail="${esc(r.id)}">Gagal Antar</button></div>`;
+    return `<article class="courier-task-card ${r.incidentStatus === 'TERKENDALA' ? 'has-incident' : ''} ${failed?'failure-reported':''} ${pending?'pending-active':''}"><div class="task-card-head"><div>${statusHtml}</div><small>${esc(shortId(r.id))}</small></div>${r.isRetry?`<div class="retry-chip task-retry">PENGANTARAN ULANG • Attempt ${Number(r.attemptNo||2)}</div>`:''}<h3>${esc(r.name || '-')}</h3><div class="task-area">${esc(areaText(r))}</div>${r.courierNote?`<div class="courier-note-task"><span>CATATAN FARMASI</span><p>${esc(r.courierNote)}</p></div>`:''}<div class="task-address"><span>Alamat</span><strong>${esc(r.address || '-')}</strong>${r.landmark ? `<p><b>Patokan:</b> ${esc(r.landmark)}</p>` : ''}</div><div class="task-meta"><span>Penerima rencana</span><b>${esc(r.plannedRecipient || r.name || '-')}</b><span>Diambil</span><b>${esc(timeOnly(r.claimedAt))}</b></div><div class="contact-actions"><a class="contact-btn maps" href="${esc(maps)}" target="_blank" rel="noopener">⌖ Maps</a><a class="contact-btn wa" href="${esc(wa)}" target="_blank" rel="noopener">WA</a><a class="contact-btn phone" href="${esc(phone)}">☎ Telepon</a></div>${stateBox}${mainActions}</article>`;
   }
 
-  async function resumeAfterFailure(id, button) {
-    const ok = await ctx.confirmAction({title:'Lanjutkan pengantaran?',message:'Gunakan hanya bila pasien/penerima berhasil ditemui atau dihubungi sebelum obat dikonfirmasi kembali oleh Farmasi. Attempt tetap sama dan laporan gagal sementara tetap tercatat di audit.',confirmLabel:'Ya, Lanjutkan Pengantaran'});
+  async function resumePending(id, button) {
+    const ok = await ctx.confirmAction({title:'Lanjut antar?',message:'Status Pending akan ditutup dan paket tetap berada pada attempt yang sama. Gunakan saat Anda akan mencoba kembali pengantaran hari ini.',confirmLabel:'Ya, Lanjut Antar'});
     if(!ok) return;
     setBusy(button,true,'Melanjutkan…');
-    try{await api().resumeDelivery(token(),id);await refreshRows({silent:true});ctx.showToast('Pengantaran dilanjutkan pada attempt yang sama.','success');}
+    try{await api().resumeDelivery(token(),id);await refreshRows({silent:true});ctx.showToast('Pending ditutup. Pengantaran dilanjutkan.','success');}
     catch(err){ctx.showToast(err.message,'error');await refreshRows({silent:true}).catch(()=>{});}
     finally{setBusy(button,false);}
   }
@@ -335,11 +337,35 @@ export function createCourierModule(ctx) {
     } finally { setBusy(button,false); }
   }
 
+  function openPending(id) {
+    const r = state.mine.find(x => x.id === id);
+    if (!r) return ctx.showToast('Tugas tidak ditemukan. Segarkan halaman.', 'error');
+    if (r.failureReported) return ctx.showToast('Tugas sudah dinyatakan Gagal Antar dan harus dikembalikan ke Farmasi.', 'warning');
+    if (r.pending) return ctx.showToast('Tugas sudah berstatus Pending.', 'warning');
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PENDING</div><h3>Pending Pengantaran</h3><p>${esc(r.name)} • ${esc(r.village)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box">Gunakan bila lokasi sudah didatangi tetapi pengantaran belum dapat diselesaikan dan masih mungkin dicoba kembali pada hari yang sama. Status ini hanya untuk operasional Kurir; Farmasi tetap melihat DALAM PERJALANAN.</div><div class="form-grid modal-form"><label><span>Alasan pending *</span><select id="pendingReason"><option value="">Pilih alasan</option>${optionList(state.master?.failureReasons || [])}</select></label><label><span>Catatan tambahan <small>opsional</small></span><textarea id="pendingDetail" rows="3" placeholder="Keterangan singkat bila diperlukan"></textarea></label></div><div id="pendingMessage"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="pendingSubmit" class="warning-btn">Simpan Pending & Buka WhatsApp</button></div>`);
+    document.getElementById('pendingSubmit')?.addEventListener('click', () => submitPending(id));
+  }
+
+  async function submitPending(id) {
+    const reason = document.getElementById('pendingReason')?.value || '';
+    const detail = document.getElementById('pendingDetail')?.value.trim() || '';
+    const msg = document.getElementById('pendingMessage');
+    if (!reason) { if (msg) msg.innerHTML = `<div class="alert error">Alasan pending wajib dipilih.</div>`; return; }
+    const button = document.getElementById('pendingSubmit'); setBusy(button,true,'Menyimpan…');
+    try {
+      const res = await api().pendingTask(token(), id, {reason,detail});
+      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Status Pending disimpan. Paket tetap dibawa oleh Kurir.', 'warning', 6500);
+      if (res.data?.waAction) openWaAction(res.data.waAction, 'Beritahu pasien — pengantaran Pending');
+    } catch (err) { if (msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
+    finally { setBusy(button,false); }
+  }
+
   function openFailure(id) {
     const r = state.mine.find(x => x.id === id);
     if (!r) return ctx.showToast('Tugas tidak ditemukan. Segarkan halaman.', 'error');
-    if (r.failureReported) return ctx.showToast('Gagal antar sudah dilaporkan. Kembalikan obat ke Farmasi atau pilih Lanjutkan Pengantaran bila pasien ditemukan.', 'warning');
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">GAGAL ANTAR</div><h3>Laporkan Gagal Antar</h3><p>${esc(r.name)} • ${esc(r.village)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box warning-note">Kurir hanya melaporkan fakta lapangan. Keputusan jadwalkan ulang, ambil mandiri, atau tutup layanan berada pada Farmasi. Setelah laporan disimpan, obat wajib dikembalikan ke Farmasi.</div><div class="form-grid modal-form"><label><span>Alasan gagal *</span><select id="failReason"><option value="">Pilih alasan</option>${optionList(state.master?.failureReasons || [])}</select></label><label><span>Catatan tambahan <small>opsional</small></span><textarea id="failDetail" rows="3" placeholder="Contoh: rumah kosong, WA belum dibalas"></textarea></label></div><div id="failMessage"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="failSubmit" class="danger-btn">Laporkan Gagal Antar</button></div>`);
+    if (r.failureReported) return ctx.showToast('Gagal Antar sudah dicatat. Kembalikan obat ke Farmasi.', 'warning');
+    const reasons = state.master?.failureReasons || [];
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">GAGAL ANTAR</div><h3>Catat Gagal Antar</h3><p>${esc(r.name)} • ${esc(r.village)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box warning-note">Gunakan bila pengantaran hari ini sudah tidak memungkinkan. Setelah disimpan, obat wajib dikembalikan ke Farmasi. Penjadwalan ulang atau pengambilan mandiri ditindaklanjuti oleh Farmasi.</div><div class="form-grid modal-form"><label><span>Alasan gagal *</span><select id="failReason"><option value="">Pilih alasan</option>${reasons.map(v=>`<option value="${esc(v)}" ${r.pendingReason===v?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label><span>Catatan tambahan <small>opsional</small></span><textarea id="failDetail" rows="3" placeholder="Keterangan singkat bila diperlukan">${esc(r.pendingDetail||'')}</textarea></label></div><div id="failMessage"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="failSubmit" class="danger-btn">Simpan Gagal Antar & Buka WhatsApp</button></div>`);
     document.getElementById('failSubmit')?.addEventListener('click', () => submitFailure(id));
   }
 
@@ -350,8 +376,9 @@ export function createCourierModule(ctx) {
     if (!reason) { if (msg) msg.innerHTML = `<div class="alert error">Alasan gagal wajib dipilih.</div>`; return; }
     const button = document.getElementById('failSubmit'); setBusy(button,true,'Menyimpan…');
     try {
-      await api().failTask(token(), id, {reason,detail});
-      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Gagal antar dilaporkan. Kembalikan obat ke Farmasi; bila pasien ditemukan sebelum pengembalian dikonfirmasi, Anda masih dapat melanjutkan pengantaran.', 'warning', 8000);
+      const res = await api().failTask(token(), id, {reason,detail});
+      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Gagal Antar disimpan. Kembalikan obat ke Farmasi.', 'warning', 7000);
+      if (res.data?.waAction) openWaAction(res.data.waAction, 'Beritahu pasien — Gagal Antar');
     } catch (err) { if (msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
     finally { setBusy(button,false); }
   }
