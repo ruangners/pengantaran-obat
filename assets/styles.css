@@ -101,3 +101,20 @@ button:disabled,.primary-btn:disabled,.secondary-btn:disabled,.mini-btn:disabled
 @media(max-width:1150px){.grid-5{grid-template-columns:repeat(3,minmax(0,1fr))}.retry-date-options.compact{grid-template-columns:1fr}}
 @media(max-width:820px){.grid-5{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-toolbar{align-items:stretch;flex-direction:column}.followup-filter-group{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.filter-chip{padding:9px 6px}.followup-policy{padding:2px 3px}.followup-page-card{padding:14px}.inline-panel-head{flex-direction:column}.inline-panel-head .mini-btn{align-self:flex-end}.inline-actions>*{flex:1 1 auto}.retry-inline-panel .form-section{padding:11px}}
 @media(max-width:560px){.grid-5{grid-template-columns:1fr}.followup-filter-group{grid-template-columns:repeat(2,minmax(0,1fr))}.followup-metrics{grid-template-columns:1fr 1fr}.followup-metrics .metric-card{min-height:100px;padding:14px}.followup-metrics .metric-value{font-size:24px}.followup-action-zone .row-actions{display:grid;grid-template-columns:1fr}.followup-action-zone .row-actions>*{width:100%}.inline-actions{flex-direction:column}.inline-actions>*{width:100%}}
+
+
+/* Tahap 6B.1 HF4 — handoff retry Farmasi → Kurir */
+.field-help{display:block;margin-top:7px;color:var(--muted,#64748b);font-size:.82rem;line-height:1.45}
+.farmasi-retry-chip{display:block;width:max-content;margin-top:6px}
+.cell-note{display:block;margin-top:7px;padding:7px 9px;border-radius:10px;background:#f5f9fa;color:#31525c;font-size:.78rem;line-height:1.4;white-space:pre-line}
+.courier-note-handoff,.courier-note-preview,.courier-note-task{border:1px solid rgba(8,143,153,.24);background:rgba(8,143,153,.07);border-radius:12px;padding:10px 12px}
+.courier-note-handoff span,.courier-note-preview span,.courier-note-task span{display:block;font-size:.68rem;font-weight:800;letter-spacing:.08em;color:#087d86;margin-bottom:4px}
+.courier-note-handoff p,.courier-note-preview p,.courier-note-task p{margin:0;white-space:pre-line;line-height:1.45;color:#173f49}
+.courier-note-preview{margin-top:8px;max-width:560px}
+.courier-note-task{margin:12px 0 4px}
+.ready-package-main{min-width:0;flex:1}
+@media (max-width:720px){
+  .ready-package{align-items:flex-start}
+  .ready-package .compact-btn{flex:0 0 auto}
+  .courier-note-preview{font-size:.88rem}
+}
