@@ -1,4 +1,4 @@
-const CACHE='antar-obat-stage6b1-hf5-pending-v1';
+const CACHE='antar-obat-stage6b1-hf5a-notefix-v1';
 const STATIC=['./','./index.html','./manifest.webmanifest','./icons/logo-rsud.png','./icons/icon-192.png','./icons/icon-512.png'];
 
 self.addEventListener('install',event=>{

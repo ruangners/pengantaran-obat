@@ -162,7 +162,7 @@ export function createCourierModule(ctx) {
   }
 
   async function renderReady() {
-    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">SIAP DIAMBIL</div><h1>Pilih Rute yang Sejalan</h1><p>Identitas pasien tidak ditampilkan sebelum tugas resmi diambil. Pilih berdasarkan wilayah dan ID paket.</p></div><div class="hero-actions"><button id="readyRefresh" class="secondary-btn">↻ Segarkan</button></div></section>
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">SIAP DIAMBIL</div><h1>Pilih Rute yang Sejalan</h1><p>Pilih paket berdasarkan wilayah dan ID paket.</p></div><div class="hero-actions"><button id="readyRefresh" class="secondary-btn">↻ Segarkan</button></div></section>
       <section class="section"><div class="toolbar-card"><div class="search-box"><span>⌕</span><input id="readySearch" placeholder="Cari kelurahan, kecamatan, kota…" value="${esc(state.search)}"></div><div class="privacy-chip">Privasi aktif • tanpa identitas pasien</div></div><div id="readyContent"><div class="inline-loading">Memuat antrean…</div></div></section>`;
     const search = document.getElementById('readySearch');
     search?.addEventListener('input', () => { state.search = search.value; renderReadyData(); });
@@ -223,7 +223,7 @@ export function createCourierModule(ctx) {
   }
 
   async function renderTasks() {
-    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">TUGAS SAYA</div><h1>Pengantaran Aktif</h1><p>Detail alamat dan kontak hanya ditampilkan untuk paket yang sudah resmi Anda ambil.</p></div><div class="hero-actions"><button id="reportIncidentTop" class="warning-btn">⚠ Laporkan Kendala</button><button id="tasksRefresh" class="secondary-btn">↻ Segarkan</button></div></section>
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">TUGAS SAYA</div><h1>Pengantaran Aktif</h1><p>Kelola paket yang sedang Anda bawa.</p></div><div class="hero-actions"><button id="reportIncidentTop" class="warning-btn">⚠ Laporkan Kendala</button><button id="tasksRefresh" class="secondary-btn">↻ Segarkan</button></div></section>
       <section class="section"><div id="taskIncident"></div><div id="taskContent"><div class="inline-loading">Memuat tugas aktif…</div></div></section>`;
     document.getElementById('reportIncidentTop')?.addEventListener('click', openIncidentReport);
     document.getElementById('tasksRefresh')?.addEventListener('click', async e => {
@@ -342,7 +342,7 @@ export function createCourierModule(ctx) {
     if (!r) return ctx.showToast('Tugas tidak ditemukan. Segarkan halaman.', 'error');
     if (r.failureReported) return ctx.showToast('Tugas sudah dinyatakan Gagal Antar dan harus dikembalikan ke Farmasi.', 'warning');
     if (r.pending) return ctx.showToast('Tugas sudah berstatus Pending.', 'warning');
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PENDING</div><h3>Pending Pengantaran</h3><p>${esc(r.name)} • ${esc(r.village)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box">Gunakan bila lokasi sudah didatangi tetapi pengantaran belum dapat diselesaikan dan masih mungkin dicoba kembali pada hari yang sama. Status ini hanya untuk operasional Kurir; Farmasi tetap melihat DALAM PERJALANAN.</div><div class="form-grid modal-form"><label><span>Alasan pending *</span><select id="pendingReason"><option value="">Pilih alasan</option>${optionList(state.master?.failureReasons || [])}</select></label><label><span>Catatan tambahan <small>opsional</small></span><textarea id="pendingDetail" rows="3" placeholder="Keterangan singkat bila diperlukan"></textarea></label></div><div id="pendingMessage"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="pendingSubmit" class="warning-btn">Simpan Pending & Buka WhatsApp</button></div>`);
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PENDING</div><h3>Pending Pengantaran</h3><p>${esc(r.name)} • ${esc(r.village)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box">Gunakan bila pengantaran belum dapat diselesaikan dan masih mungkin dicoba kembali hari ini.</div><div class="form-grid modal-form"><label><span>Alasan pending *</span><select id="pendingReason"><option value="">Pilih alasan</option>${optionList(state.master?.failureReasons || [])}</select></label><label><span>Catatan tambahan <small>opsional</small></span><textarea id="pendingDetail" rows="3" placeholder="Keterangan singkat bila diperlukan"></textarea></label></div><div id="pendingMessage"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="pendingSubmit" class="warning-btn">Simpan Pending & Buka WhatsApp</button></div>`);
     document.getElementById('pendingSubmit')?.addEventListener('click', () => submitPending(id));
   }
 

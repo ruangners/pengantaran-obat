@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=6.1.6-hf5';
+import { APP_CONFIG } from './config.js?v=6.1.7-hf5a';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -328,7 +328,7 @@ export function createFarmasiModule(ctx) {
   }
 
   async function renderRegistration() {
-    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">PENDAFTARAN</div><h1>Daftarkan Pengantaran</h1><p>Workflow Produksi V1 dipertahankan. Sistem tetap memeriksa duplikasi aktif dan wilayah cakupan.</p></div><div class="hero-actions"><button id="registrationMasterRefresh" class="secondary-btn">↻ Muat Ulang Wilayah</button></div></section>
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">PENDAFTARAN</div><h1>Daftarkan Pengantaran</h1><p>Isi data pengantaran dan pilih wilayah tujuan.</p></div><div class="hero-actions"><button id="registrationMasterRefresh" class="secondary-btn">↻ Muat Ulang Wilayah</button></div></section>
       <section class="section"><div class="card form-card"><div id="registrationLoading" class="inline-loading">Memuat master wilayah…</div><form id="registrationForm" class="hidden">${renderDeliveryFields({}, 'reg')}<div class="form-actions"><label class="check-row"><input id="printAfterSave" type="checkbox" checked><span>Cetak label setelah simpan</span></label><div class="action-buttons"><button id="clearRegistration" class="secondary-btn" type="button">Bersihkan</button><button id="saveRegistration" class="primary-btn" type="submit">Simpan Pendaftaran</button></div></div></form></div></section>`;
     try {
       await ensureData();

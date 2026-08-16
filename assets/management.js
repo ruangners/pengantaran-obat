@@ -90,7 +90,7 @@ export function createManagementModule(ctx){
 
 
   function attemptPanel(a={}){
-    if(!a || !Number(a.total||0)) return `<div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Attempt Pengantaran</h3><p>Ledger attempt mulai aktif sejak Tahap 6B.1.</p></div></div><div class="empty-state"><p>Belum ada attempt yang tercatat pada periode ini.</p></div></div>`;
+    if(!a || !Number(a.total||0)) return `<div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Attempt Pengantaran</h3><p>Riwayat setiap percobaan pengantaran pada periode ini.</p></div></div><div class="empty-state"><p>Belum ada attempt yang tercatat pada periode ini.</p></div></div>`;
     return `<div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Operasional Attempt</h3><p>Memisahkan hasil akhir kasus layanan dari setiap percobaan pengantaran.</p></div></div><div class="attempt-kpi-grid"><div><span>Total attempt</span><b>${n(a.total)}</b></div><div><span>Berhasil</span><b>${n(a.delivered)}</b></div><div><span>Gagal</span><b>${n(a.failed)}</b></div><div><span>Success attempt</span><b>${pct(a.successRate)}</b></div><div><span>Retry attempt</span><b>${n(a.retryAttempts)}</b></div><div><span>Kasus retry</span><b>${n(a.retriedCases)}</b></div><div><span>Retry berhasil</span><b>${n(a.retryDelivered)}</b></div><div><span>Ambil mandiri</span><b>${n(a.selfPickup||0)}</b></div><div><span>Menunggu ambil</span><b>${n(a.selfPickupPending||0)}</b></div><div><span>Success retry</span><b>${pct(a.retrySuccessRate)}</b></div></div><small class="attempt-source">Sumber: ${esc(a.source||'DELIVERY_ATTEMPTS')} • tersedia sejak aktivasi 6B.1</small></div>`;
   }
 
