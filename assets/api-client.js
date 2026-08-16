@@ -53,7 +53,7 @@ export class AppsScriptFormTransport {
     const version = String(result?.data?.version || '');
     const contract = String(result?.data?.apiContract || '');
     if (this.expectedContract && contract !== this.expectedContract) {
-      throw makeError(`Kontrak API belum cocok. Backend ${version || 'tidak diketahui'} memakai ${contract || '(tidak ada kontrak)'}, sedangkan frontend mengharapkan ${this.expectedContract}. Jika backend sudah 6.1.1 HF1, muat ulang frontend terbaru.`, 'VERSION_MISMATCH');
+      throw makeError(`Kontrak API belum cocok. Backend ${version || 'tidak diketahui'} memakai ${contract || '(tidak ada kontrak)'}, sedangkan frontend mengharapkan ${this.expectedContract}. Pastikan backend dan frontend berasal dari paket rilis yang sama, lalu muat ulang aplikasi.`, 'VERSION_MISMATCH');
     }
     this.onState({ ready: true, message: `Backend siap • ${version}` });
     return result;
@@ -191,6 +191,7 @@ export class PengantaranApi {
   pendingReceiptVerifications(token) { return this._read('stage2PendingReceiptVerifications', String(token || '')); }
   failedDeliveryFollowUps(token) { return this._read('stage6B1FailedFollowUps', String(token || '')); }
   confirmReturnedToFarmasi(token, id) { return this._mutate('stage6B1ConfirmReturn', String(token || ''), String(id || '')); }
+  failedFollowupWa(token, id) { return this._mutate('stage6B1FollowupWa', String(token || ''), String(id || '')); }
   planRedelivery(token, id, payload) { return this._mutate('stage6B1PlanRedelivery', String(token || ''), String(id || ''), payload || {}); }
   rescheduleDelivery(token, id, payload) { return this._mutate('stage6B1Reschedule', String(token || ''), String(id || ''), payload || {}); }
   markSelfPickup(token, id, note = '') { return this._mutate('stage6B1MarkSelfPickup', String(token || ''), String(id || ''), String(note || '')); }

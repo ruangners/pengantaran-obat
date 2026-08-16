@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=6.1.1-hf1a';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.1-hf1a';
-import { createFarmasiModule } from './farmasi.js?v=6.1.1-hf1a';
-import { createCourierModule } from './courier.js?v=6.1.1-hf1a';
-import { createAdminModule } from './admin.js?v=6.1.1-hf1a';
-import { createManagementModule } from './management.js?v=6.1.1-hf1a';
+import { APP_CONFIG } from './config.js?v=6.1.3-hf2';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.3-hf2';
+import { createFarmasiModule } from './farmasi.js?v=6.1.3-hf2';
+import { createCourierModule } from './courier.js?v=6.1.3-hf2';
+import { createAdminModule } from './admin.js?v=6.1.3-hf2';
+import { createManagementModule } from './management.js?v=6.1.3-hf2';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false, backendInfo:null, activeRequests:0, lastSessionCheck:0, authResetting:false, updateRegistration:null, updateRequested:false };
@@ -291,7 +291,7 @@ async function applyAppUpdate(){
 
 async function registerServiceWorker(){
   if(!('serviceWorker' in navigator))return;
-  const reg=await navigator.serviceWorker.register('./sw.js?v=6.0.0-6b',{updateViaCache:'none'});
+  const reg=await navigator.serviceWorker.register('./sw.js?v=6.1.3-hf2',{updateViaCache:'none'});
   state.updateRegistration=reg;
   if(reg.waiting && navigator.serviceWorker.controller) showUpdateAvailable(reg);
   reg.addEventListener('updatefound',()=>{
