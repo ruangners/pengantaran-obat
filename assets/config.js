@@ -1,8 +1,8 @@
 export const APP_CONFIG = Object.freeze({
   appName: 'Pengantaran Obat Gratis',
   organization: 'RSUD Provinsi Nusa Tenggara Barat',
-  version: '6.1.7-stage6b1-hf5a-notefix',
-  apiContract: 'ANTAROBAT-RC1-REDELIVERY-HF5A',
+  version: '6.1.8-stage6b1-hf5b-packcode',
+  apiContract: 'ANTAROBAT-RC1-REDELIVERY-HF5B',
   backendUrl: '',
   backendStorageKey: 'antarobat_backend_url',
   sessionStorageKey: 'antarobat_session',

@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=6.1.7-hf5a';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.7-hf5a';
-import { createFarmasiModule } from './farmasi.js?v=6.1.7-hf5a';
-import { createCourierModule } from './courier.js?v=6.1.7-hf5a';
-import { createAdminModule } from './admin.js?v=6.1.7-hf5a';
-import { createManagementModule } from './management.js?v=6.1.7-hf5a';
+import { APP_CONFIG } from './config.js?v=6.1.8-hf5b';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.8-hf5b';
+import { createFarmasiModule } from './farmasi.js?v=6.1.8-hf5b';
+import { createCourierModule } from './courier.js?v=6.1.8-hf5b';
+import { createAdminModule } from './admin.js?v=6.1.8-hf5b';
+import { createManagementModule } from './management.js?v=6.1.8-hf5b';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false, backendInfo:null, activeRequests:0, lastSessionCheck:0, authResetting:false, updateRegistration:null, updateRequested:false };
@@ -301,7 +301,7 @@ async function applyAppUpdate(){
 
 async function registerServiceWorker(){
   if(!('serviceWorker' in navigator))return;
-  const reg=await navigator.serviceWorker.register('./sw.js?v=6.1.7-hf5a',{updateViaCache:'none'});
+  const reg=await navigator.serviceWorker.register('./sw.js?v=6.1.8-hf5b',{updateViaCache:'none'});
   state.updateRegistration=reg;
   if(reg.waiting && navigator.serviceWorker.controller) showUpdateAvailable(reg);
   reg.addEventListener('updatefound',()=>{
@@ -330,6 +330,6 @@ async function boot(){
   if(!endpoint)setTimeout(openBackendModal,250);
   registerServiceWorker().catch(()=>{});
 }
-console.info('[Pengantaran Obat] Frontend build 6.1.7-stage6b1-hf5a-notefix');
+console.info('[Pengantaran Obat] Frontend build 6.1.8-stage6b1-hf5b-packcode');
 window.addEventListener('unhandledrejection',event=>{const e=event.reason;if(e?.code==='SESSION_EXPIRED')return;console.error('[Pengantaran Obat] Unhandled promise rejection:',e?.code||'ERROR',e?.message||String(e));});
 boot();
