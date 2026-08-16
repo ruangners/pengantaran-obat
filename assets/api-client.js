@@ -195,6 +195,7 @@ export class PengantaranApi {
   planRedelivery(token, id, payload) { return this._mutate('stage6B1PlanRedelivery', String(token || ''), String(id || ''), payload || {}); }
   rescheduleDelivery(token, id, payload) { return this._mutate('stage6B1Reschedule', String(token || ''), String(id || ''), payload || {}); }
   markSelfPickup(token, id, note = '') { return this._mutate('stage6B1MarkSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
+  confirmSelfPickup(token, id, note = '') { return this._mutate('stage6B1ConfirmSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
   closeFailedDelivery(token, id, note) { return this._mutate('stage6B1CloseService', String(token || ''), String(id || ''), String(note || '')); }
   resumeDelivery(token, id) { return this._mutate('stage6B1ResumeDelivery', String(token || ''), String(id || '')); }
   attemptHistory(token, id) { return this._read('stage6B1AttemptHistory', String(token || ''), String(id || '')); }

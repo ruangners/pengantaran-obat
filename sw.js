@@ -1,4 +1,4 @@
-const CACHE='antar-obat-stage6b1-hf2-followupflow-v1';
+const CACHE='antar-obat-stage6b1-hf3-followupmenu-v1';
 const STATIC=['./','./index.html','./manifest.webmanifest','./icons/logo-rsud.png','./icons/icon-192.png','./icons/icon-512.png'];
 
 self.addEventListener('install',event=>{

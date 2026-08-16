@@ -1,16 +1,16 @@
-import { APP_CONFIG } from './config.js?v=6.1.3-hf2';
-import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.3-hf2';
-import { createFarmasiModule } from './farmasi.js?v=6.1.3-hf2';
-import { createCourierModule } from './courier.js?v=6.1.3-hf2';
-import { createAdminModule } from './admin.js?v=6.1.3-hf2';
-import { createManagementModule } from './management.js?v=6.1.3-hf2';
+import { APP_CONFIG } from './config.js?v=6.1.4-hf3';
+import { AppsScriptFormTransport, PengantaranApi } from './api-client.js?v=6.1.4-hf3';
+import { createFarmasiModule } from './farmasi.js?v=6.1.4-hf3';
+import { createCourierModule } from './courier.js?v=6.1.4-hf3';
+import { createAdminModule } from './admin.js?v=6.1.4-hf3';
+import { createManagementModule } from './management.js?v=6.1.4-hf3';
 
 const $ = id => document.getElementById(id);
 const state = { api:null, transport:null, endpoint:'', session:null, view:'home', backendReady:false, backendInfo:null, activeRequests:0, lastSessionCheck:0, authResetting:false, updateRegistration:null, updateRequested:false };
 
 const NAV = {
   FARMASI: [
-    ['home','⌂','Beranda'],['registration','＋','Pendaftaran'],['today','▤','Hari Ini'],['verification','✓','Verifikasi'],['labels','▣','Label']
+    ['home','⌂','Beranda'],['registration','＋','Pendaftaran'],['today','▤','Hari Ini'],['verification','✓','Verifikasi'],['followup','↺','Tindak Lanjut'],['labels','▣','Label']
   ],
   KURIR: [
     ['home','⌂','Beranda'],['ready','◎','Siap'],['tasks','➜','Tugas'],['history','↺','Riwayat'],['account','●','Akun']
@@ -24,7 +24,7 @@ const NAV = {
 };
 
 const PAGE_META = {
-  home:['Beranda','Ringkasan sesuai role pengguna'], registration:['Pendaftaran','Pendaftaran pengantaran obat'], today:['Pengantaran Hari Ini','Pemantauan alur hari ini'], verification:['Verifikasi','Verifikasi penerimaan manual'], labels:['Label','Cetak dan cetak ulang label A6'], ready:['Siap Diambil','Paket siap diambil kurir'], tasks:['Tugas Saya','Pengantaran aktif'], history:['Riwayat','Riwayat tugas kurir'], account:['Akun','Informasi akun dan perangkat'], operations:['Operasional','Kontrol operasional Admin'], incidents:['Kendala','Kendala kurir dan tindak lanjut'], archive:['Arsip','Kesehatan arsip tahunan'], master:['Master Data','Wilayah dan konfigurasi'], audit:['Audit','Jejak aktivitas sistem'], performance:['Kinerja','Kinerja layanan dan kurir'], areas:['Wilayah','Distribusi layanan per wilayah'], reports:['Laporan','Laporan periode dan PDF']
+  home:['Beranda','Ringkasan sesuai role pengguna'], registration:['Pendaftaran','Pendaftaran pengantaran obat'], today:['Pengantaran Hari Ini','Pemantauan alur hari ini'], verification:['Verifikasi','Verifikasi penerimaan manual'], followup:['Tindak Lanjut','Gagal antar, retry, dan ambil mandiri'], labels:['Label','Cetak dan cetak ulang label A6'], ready:['Siap Diambil','Paket siap diambil kurir'], tasks:['Tugas Saya','Pengantaran aktif'], history:['Riwayat','Riwayat tugas kurir'], account:['Akun','Informasi akun dan perangkat'], operations:['Operasional','Kontrol operasional Admin'], incidents:['Kendala','Kendala kurir dan tindak lanjut'], archive:['Arsip','Kesehatan arsip tahunan'], master:['Master Data','Wilayah dan konfigurasi'], audit:['Audit','Jejak aktivitas sistem'], performance:['Kinerja','Kinerja layanan dan kurir'], areas:['Wilayah','Distribusi layanan per wilayah'], reports:['Laporan','Laporan periode dan PDF']
 };
 
 export function escapeHtml(v){return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -101,6 +101,14 @@ function confirmAction({title='Konfirmasi',message='',confirmLabel='Lanjutkan',t
   });
 }
 
+function setNavBadge(view,count){
+  const n=Math.max(0,Number(count||0));
+  document.querySelectorAll(`[data-nav-badge="${view}"]`).forEach(el=>{
+    el.textContent=n>99?'99+':String(n);
+    el.classList.toggle('hidden',!n);
+  });
+}
+
 const farmasi = createFarmasiModule({
   escapeHtml,
   getApi:()=>state.api,
@@ -110,7 +118,8 @@ const farmasi = createFarmasiModule({
   openModal,
   closeModal,
   confirmAction,
-  showToast
+  showToast,
+  setNavBadge
 });
 
 const courier = createCourierModule({
@@ -205,8 +214,8 @@ async function logout(){
 
 function buildNav(){
   const role=state.session.user.role;const items=NAV[role]||NAV.FARMASI;
-  $('sideNav').innerHTML=items.map(i=>`<button class="nav-item" data-view="${i[0]}"><span class="nav-icon">${i[1]}</span>${escapeHtml(i[2])}</button>`).join('');
-  const mobileItems=items.slice(0,5);$('bottomNav').style.setProperty('--nav-count',mobileItems.length);$('bottomNav').innerHTML=mobileItems.map(i=>`<button data-view="${i[0]}"><span>${i[1]}</span>${escapeHtml(i[2])}</button>`).join('');
+  $('sideNav').innerHTML=items.map(i=>`<button class="nav-item" data-view="${i[0]}"><span class="nav-icon">${i[1]}</span>${escapeHtml(i[2])}<span class="nav-count-badge hidden" data-nav-badge="${i[0]}"></span></button>`).join('');
+  const mobileItems=role==='FARMASI'?items:items.slice(0,5);$('bottomNav').style.setProperty('--nav-count',mobileItems.length);$('bottomNav').innerHTML=mobileItems.map(i=>`<button data-view="${i[0]}"><span>${i[1]}</span>${escapeHtml(i[2])}<span class="nav-count-badge hidden" data-nav-badge="${i[0]}"></span></button>`).join('');
   document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>openView(b.dataset.view)));
 }
 
@@ -228,6 +237,7 @@ function openView(view){
     if(view==='registration') return farmasi.renderRegistration();
     if(view==='today') return farmasi.renderToday();
     if(view==='verification') return farmasi.renderVerification();
+    if(view==='followup') return farmasi.renderFollowUp();
     if(view==='labels') return farmasi.renderLabels();
   }
   if(role==='KURIR'){
@@ -291,7 +301,7 @@ async function applyAppUpdate(){
 
 async function registerServiceWorker(){
   if(!('serviceWorker' in navigator))return;
-  const reg=await navigator.serviceWorker.register('./sw.js?v=6.1.3-hf2',{updateViaCache:'none'});
+  const reg=await navigator.serviceWorker.register('./sw.js?v=6.1.4-hf3',{updateViaCache:'none'});
   state.updateRegistration=reg;
   if(reg.waiting && navigator.serviceWorker.controller) showUpdateAvailable(reg);
   reg.addEventListener('updatefound',()=>{
@@ -320,6 +330,6 @@ async function boot(){
   if(!endpoint)setTimeout(openBackendModal,250);
   registerServiceWorker().catch(()=>{});
 }
-console.info('[Pengantaran Obat] Frontend build 6.0.0-stage6b-hardening');
+console.info('[Pengantaran Obat] Frontend build 6.1.4-stage6b1-hf3-followupmenu');
 window.addEventListener('unhandledrejection',event=>{const e=event.reason;if(e?.code==='SESSION_EXPIRED')return;console.error('[Pengantaran Obat] Unhandled promise rejection:',e?.code||'ERROR',e?.message||String(e));});
 boot();

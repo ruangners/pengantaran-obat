@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=6.1.3-hf2';
+import { APP_CONFIG } from './config.js?v=6.1.4-hf3';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -9,13 +9,23 @@ export function createFarmasiModule(ctx) {
     lastCreated: null,
     loaded: false,
     loading: null,
-    search: ''
+    search: '',
+    followUpFilter: 'all',
+    followUpExpanded: {},
+    followUpWaActions: {}
   };
 
   const esc = ctx.escapeHtml;
   const token = () => ctx.getToken();
   const api = () => ctx.getApi();
   const page = () => document.getElementById('pageContent');
+
+  function syncFarmasiBadges() {
+    if (typeof ctx.setNavBadge === 'function') {
+      ctx.setNavBadge('verification', state.pending.length);
+      ctx.setNavBadge('followup', state.failedFollowUps.length);
+    }
+  }
 
   function statusClass(status) {
     const s = String(status || '').toUpperCase();
@@ -67,6 +77,7 @@ export function createFarmasiModule(ctx) {
       state.pending = res.data?.pending || [];
       state.failedFollowUps = res.data?.failedFollowUps || [];
       state.loaded = true;
+      syncFarmasiBadges();
       return state;
     })();
     try { return await state.loading; }
@@ -83,12 +94,14 @@ export function createFarmasiModule(ctx) {
   async function loadPending() {
     const res = await api().pendingReceiptVerifications(token());
     state.pending = res.data?.rows || [];
+    syncFarmasiBadges();
     return state.pending;
   }
 
   async function loadFailedFollowUps() {
     const res = await api().failedDeliveryFollowUps(token());
     state.failedFollowUps = res.data?.rows || [];
+    syncFarmasiBadges();
     return state.failedFollowUps;
   }
 
@@ -307,7 +320,7 @@ export function createFarmasiModule(ctx) {
       <button class="attention-card ${state.failedFollowUps.length ? 'danger-attention' : ''}" id="attentionFailed"><span class="attention-icon">↺</span><span><strong>${state.failedFollowUps.length} gagal antar perlu tindak lanjut</strong><small>${state.failedFollowUps.length ? 'Pantau pengembalian obat; keputusan retry, ambil mandiri, atau tutup berada pada Farmasi.' : 'Tidak ada gagal antar yang menunggu Farmasi.'}</small></span><b>›</b></button>
       <button class="attention-card" id="attentionToday"><span class="attention-icon">▤</span><span><strong>${state.rows.length} pendaftaran hari ini</strong><small>Pantau status dan aksi lanjutan pengantaran.</small></span><b>›</b></button>`;
     document.getElementById('attentionVerification')?.addEventListener('click', () => ctx.navigate('verification'));
-    document.getElementById('attentionFailed')?.addEventListener('click', openFailedFollowUps);
+    document.getElementById('attentionFailed')?.addEventListener('click', () => ctx.navigate('followup'));
     document.getElementById('attentionToday')?.addEventListener('click', () => ctx.navigate('today'));
   }
 
@@ -583,49 +596,6 @@ export function createFarmasiModule(ctx) {
   }
 
 
-  async function openFailedFollowUps() {
-    try { await loadFailedFollowUps(); }
-    catch (err) { return ctx.showToast(err.message,'error'); }
-    renderFailedFollowUpsModal();
-  }
-
-  function renderFailedFollowUpsModal() {
-    const rows = state.failedFollowUps || [];
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">GAGAL ANTAR</div><h3>Tindak Lanjut Farmasi</h3><p>Setelah obat kembali, hubungi pasien terlebih dahulu. Keputusan retry, ambil mandiri, atau tutup layanan ditetapkan setelah konfirmasi pasien.</p></div><button class="modal-x" data-modal-close>×</button></div>
-      <div class="redelivery-summary"><strong>${rows.length}</strong><span>kasus menunggu keputusan Farmasi</span></div>
-      <div class="redelivery-list">${rows.length ? rows.map(item=>failedFollowUpCard(item)).join('') : '<div class="empty-state"><h3>Tidak ada tindak lanjut</h3><p>Semua gagal antar sudah diselesaikan.</p></div>'}</div>
-      <div class="modal-actions"><button class="secondary-btn" data-modal-close>Tutup</button><button id="failedRefresh" class="primary-btn">↻ Segarkan</button></div>`,{wide:true});
-    document.getElementById('failedRefresh')?.addEventListener('click',async e=>{buttonBusy(e.currentTarget,true,'Memuat…');try{await loadFailedFollowUps();renderFailedFollowUpsModal();}catch(x){ctx.showToast(x.message,'error')}finally{buttonBusy(e.currentTarget,false)}});
-    document.querySelectorAll('[data-return-id]').forEach(b=>b.addEventListener('click',()=>confirmReturned(b.dataset.returnId,b)));
-    document.querySelectorAll('[data-followup-wa-id]').forEach(b=>b.addEventListener('click',()=>openFollowupWa(b.dataset.followupWaId,b)));
-    document.querySelectorAll('[data-plan-retry-id]').forEach(b=>b.addEventListener('click',()=>openPlanSchedule(b.dataset.planRetryId)));
-    document.querySelectorAll('[data-edit-plan-id]').forEach(b=>b.addEventListener('click',()=>openPlanSchedule(b.dataset.editPlanId,true)));
-    document.querySelectorAll('[data-reschedule-id]').forEach(b=>b.addEventListener('click',()=>openReschedule(b.dataset.rescheduleId)));
-    document.querySelectorAll('[data-self-pickup-id]').forEach(b=>b.addEventListener('click',()=>markSelfPickup(b.dataset.selfPickupId,b)));
-    document.querySelectorAll('[data-close-failed-id]').forEach(b=>b.addEventListener('click',()=>openCloseFailed(b.dataset.closeFailedId)));
-  }
-
-  function failedFollowUpCard(item) {
-    const a=item.attempt||{}, r=item.record||{};
-    const returned=String(a.returnStatus||'')==='SUDAH KEMBALI';
-    const provisional=String(a.status||'')==='GAGAL DILAPORKAN'&&!a.result;
-    const contacted=Boolean(String(a.followupWaAt||'').trim());
-    const planned=normalizeDateKey(a.plannedDate);
-    const due=planned ? isDateDue(planned) : false;
-    const parentId=esc(r['ID Sistem']||a.parentId);
-    const stateBadge=provisional?'<span class="status-badge warning">GAGAL DILAPORKAN</span>':'<span class="status-badge failed">GAGAL ANTAR</span>';
-    let afterReturn='';
-    if(!contacted){
-      afterReturn=`<div class="followup-step"><div class="notice-box">Langkah berikutnya: <b>hubungi pasien terlebih dahulu</b>. WhatsApp ini belum menetapkan tanggal pengantaran ulang.</div><button class="whatsapp-btn" data-followup-wa-id="${parentId}">💬 WA Konfirmasi Pasien</button>${planned?`<span class="planned-date-chip">Rencana lama: ${esc(formatDateId(planned))} • konfirmasi pasien ulang dulu</span>`:''}</div>`;
-    }else if(!planned){
-      afterReturn=`<div class="followup-confirmed"><span class="status-badge success">✓ PASIEN SUDAH DIHUBUNGI</span><small>WA dibuka ${esc(a.followupWaAt||'')}</small></div><div class="row-actions"><button class="primary-btn" data-plan-retry-id="${parentId}">Jadwalkan Pengantaran Ulang</button><button class="secondary-btn" data-self-pickup-id="${parentId}">Ambil Mandiri</button><button class="danger-soft-btn" data-close-failed-id="${parentId}">Tutup Layanan</button></div>`;
-    }else{
-      const today=planned===todayKey();
-      afterReturn=`<div class="followup-confirmed"><span class="status-badge success">✓ PASIEN SUDAH DIHUBUNGI</span><small>WA dibuka ${esc(a.followupWaAt||'')}</small></div><div class="retry-plan-box"><div><span>Rencana pengantaran ulang</span><b>${today?'HARI INI • ':''}${esc(formatDateId(planned))}</b></div><button class="mini-btn" data-edit-plan-id="${parentId}">Edit Rencana</button></div><div class="row-actions">${due?`<button class="primary-btn" data-reschedule-id="${parentId}">Buat Attempt ${Number(a.attemptNo||1)+1}</button>`:`<button class="primary-btn" disabled title="Attempt baru baru boleh dibuat pada tanggal rencana">Belum Waktunya Retry</button>`}<button class="secondary-btn" data-self-pickup-id="${parentId}">Ambil Mandiri</button><button class="danger-soft-btn" data-close-failed-id="${parentId}">Tutup Layanan</button></div>`;
-    }
-    return `<article class="redelivery-card"><div class="redelivery-head"><div>${stateBadge}${Number(a.attemptNo||1)>1?` <span class="status-badge warning">ATTEMPT ${Number(a.attemptNo)}</span>`:''}<h4>${esc(r['Nama Pasien']||'-')}</h4><p>No. RM ${esc(r['No RM']||'-')} • ${esc([r['Kelurahan'],r['Kecamatan']].filter(Boolean).join(' • '))}</p></div><div class="return-state ${returned?'ok':'wait'}">${returned?'✓ Obat sudah kembali':'Menunggu obat kembali'}</div></div><div class="redelivery-detail"><div><span>Kurir</span><b>${esc(a.courier||r['Kurir']||'-')}</b></div><div><span>Alasan</span><b>${esc(a.failureReason||r['Alasan Gagal']||'-')}</b></div><div><span>Status obat</span><b>${returned?'Sudah diterima Farmasi':'Wajib dikembalikan ke Farmasi'}</b></div><div><span>Waktu laporan</span><b>${esc(a.failureReportedAt||a.completedAt||'-')}</b></div></div>${a.failureDetail?`<p class="redelivery-note">${esc(a.failureDetail)}</p>`:''}${provisional?`<div class="notice-box">Laporan gagal belum final. Bila pasien ditemukan sebelum obat kembali, Kurir dapat memilih <b>Lanjutkan Pengantaran</b> dan tetap memakai attempt yang sama.</div>`:''}<div class="failed-followup-actions">${!returned?`<button class="primary-btn" data-return-id="${parentId}">Konfirmasi Obat Kembali</button>`:afterReturn}</div></article>`;
-  }
-
   function witaParts(date=new Date()){
     const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Makassar',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
     const get=t=>parts.find(x=>x.type===t)?.value||'';
@@ -637,84 +607,150 @@ export function createFarmasiModule(ctx) {
   function normalizeDateKey(value){const text=String(value||'').trim();const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(text);return m?`${m[1]}-${m[2]}-${m[3]}`:'';}
   function isDateDue(value){const key=normalizeDateKey(value);return Boolean(key)&&key<=todayKey();}
   function formatDateId(value){const key=normalizeDateKey(value);if(!key)return String(value||'');const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(key);const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]),12));return new Intl.DateTimeFormat('id-ID',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(d);}
-
-  async function openFollowupWa(id,button){
-    const item=state.failedFollowUps.find(x=>String(x.record?.['ID Sistem']||x.attempt?.parentId)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan daftar.','error');
-    const r=item.record||{};buttonBusy(button,true,'Menyiapkan WA…');
-    try{
-      const res=await api().failedFollowupWa(token(),id);
-      await loadFailedFollowUps();
-      if(res.data?.waAction)openWhatsAppModal(res.data.waAction,res.data?.record||r,{title:'Konfirmasi tindak lanjut pasien',description:'Pesan ini hanya meminta konfirmasi pasien. Tanggal retry ditentukan setelah pasien menjawab.'});
-      else ctx.showToast('Pesan WhatsApp tidak tersedia.','error');
-    }catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+  function safeDomId(value){return String(value||'').replace(/[^a-zA-Z0-9_-]/g,'_');}
+  function followUpId(item){return String(item?.record?.['ID Sistem']||item?.attempt?.parentId||'');}
+  function followUpPhase(item){
+    const a=item?.attempt||{};
+    const returned=String(a.returnStatus||'')==='SUDAH KEMBALI';
+    const resolution=String(a.resolution||'');
+    if(resolution==='MENUNGGU AMBIL MANDIRI'||a.waitingSelfPickup)return 'pickup';
+    if(!returned)return 'return';
+    if(Number(a.attemptNo||1)>=Number(a.maxAttempts||2))return 'contact';
+    if(!String(a.followupWaAt||'').trim())return 'contact';
+    if(normalizeDateKey(a.plannedDate))return 'retry';
+    return 'decision';
   }
 
-  function openPlanSchedule(id,editing=false){
-    const item=state.failedFollowUps.find(x=>String(x.record?.['ID Sistem']||x.attempt?.parentId)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan daftar.','error');
-    const a=item.attempt||{},r=item.record||{};
-    if(!a.followupWaAt)return ctx.showToast('Hubungi pasien melalui WhatsApp terlebih dahulu.','warning');
-    const existing=normalizeDateKey(a.plannedDate);const today=todayKey(),tomorrow=tomorrowKey();
-    let selected=existing||tomorrow;
-    const mode=existing===today?'today':(!existing||existing===tomorrow?'tomorrow':'other');
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">JADWAL RETRY</div><h3>${editing?'Edit':'Tentukan'} Rencana Pengantaran Ulang</h3><p>${esc(r['Nama Pasien']||'-')} • ${esc(r['No RM']||'-')}</p></div><button class="modal-x" data-modal-close>×</button></div>
-      <div class="notice-box">Default operasional adalah <b>besok bila hari pelayanan</b>. Jika besok libur/non-operasional, pilih tanggal lain. Pengantaran ulang hari ini hanya dipilih bila Farmasi memastikan waktu dan kondisi Kurir masih memungkinkan.</div>
-      <div class="retry-date-options">
-        <label class="retry-date-option"><input type="radio" name="retry-date-mode" value="tomorrow" ${mode==='tomorrow'?'checked':''}><span><b>Besok / hari operasional berikutnya</b><small>${esc(formatDateId(tomorrow))} • pilihan utama</small></span></label>
-        <label class="retry-date-option"><input type="radio" name="retry-date-mode" value="today" ${mode==='today'?'checked':''}><span><b>Hari ini</b><small>${esc(formatDateId(today))} • hanya jika operasional memungkinkan</small></span></label>
-        <label class="retry-date-option"><input type="radio" name="retry-date-mode" value="other" ${mode==='other'?'checked':''}><span><b>Tanggal lain</b><small>Gunakan bila pasien meminta tanggal tertentu atau besok libur.</small></span></label>
-      </div>
-      <div class="field ${mode==='other'?'':'hidden'}" id="customRetryDateWrap"><label for="customRetryDate">Tanggal pengantaran ulang *</label><input id="customRetryDate" type="date" value="${esc(mode==='other'?selected:tomorrow)}" min="${esc(today)}"></div>
-      <div class="field"><label for="retry-plan-note">Catatan ketersediaan pasien <span>opsional</span></label><textarea id="retry-plan-note" rows="2" placeholder="Contoh: pasien berada di rumah setelah pukul 13.00. Ini bukan janji jam pengiriman."></textarea></div>
-      <div id="planRetryMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="saveRetryPlan" class="primary-btn">Simpan Rencana</button></div>`);
-    const wrap=document.getElementById('customRetryDateWrap'),custom=document.getElementById('customRetryDate');
-    document.querySelectorAll('input[name="retry-date-mode"]').forEach(el=>el.addEventListener('change',()=>{wrap?.classList.toggle('hidden',el.value!=='other'||!el.checked);}));
-    document.getElementById('saveRetryPlan')?.addEventListener('click',async e=>{
-      const choice=document.querySelector('input[name="retry-date-mode"]:checked')?.value||'tomorrow';
-      selected=choice==='today'?today:choice==='tomorrow'?tomorrow:String(custom?.value||'');
-      if(!selected)return ctx.showToast('Pilih tanggal pengantaran ulang.','error');
-      const note=document.getElementById('retry-plan-note')?.value.trim()||'';
-      if(choice==='today'){
-        const ok=await ctx.confirmAction({title:'Pengantaran ulang hari ini?',message:'Pilih Hari Ini hanya bila Farmasi memastikan waktu pelayanan dan kondisi operasional Kurir masih memungkinkan. Jika ragu, gunakan besok/hari operasional berikutnya.',confirmLabel:'Ya, Jadwalkan Hari Ini'});if(!ok)return;
-      }
-      buttonBusy(e.currentTarget,true,'Menyimpan…');
-      try{await api().planRedelivery(token(),id,{scheduleDate:selected,note});await loadFailedFollowUps();ctx.showToast(`Rencana retry disimpan: ${formatDateId(selected)}.`,'success');renderFailedFollowUpsModal();}
-      catch(x){document.getElementById('planRetryMsg').innerHTML=`<div class="alert error">${esc(x.message)}</div>`;}finally{buttonBusy(e.currentTarget,false)}
-    });
+  async function renderFollowUp(){
+    page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">TINDAK LANJUT FARMASI</div><h1>Gagal Antar & Pengantaran Ulang</h1><p>Kelola pengembalian obat, konfirmasi pasien, retry, dan pengambilan mandiri tanpa keluar-masuk popup.</p></div><div class="hero-actions"><button id="followUpRefresh" class="secondary-btn">↻ Segarkan</button></div></section>
+      <section class="section"><div id="followUpMetrics" class="grid grid-5 followup-metrics"></div></section>
+      <section class="section"><div class="toolbar-card followup-toolbar"><div class="followup-filter-group">
+        <button class="filter-chip" data-follow-filter="all">Semua</button><button class="filter-chip" data-follow-filter="return">Menunggu Obat</button><button class="filter-chip" data-follow-filter="contact">Konfirmasi Pasien</button><button class="filter-chip" data-follow-filter="decision">Perlu Keputusan</button><button class="filter-chip" data-follow-filter="retry">Retry</button><button class="filter-chip" data-follow-filter="pickup">Ambil Mandiri</button>
+      </div><div class="followup-policy">Maksimal <b>2 attempt</b>. Gagal kedua → wajib ambil mandiri di Loket Farmasi.</div></div></section>
+      <section class="section"><div id="followUpContent" class="followup-worklist"><div class="inline-loading">Memuat tindak lanjut…</div></div></section>`;
+    document.getElementById('followUpRefresh')?.addEventListener('click',async e=>{buttonBusy(e.currentTarget,true,'Memuat…');try{await loadFailedFollowUps();renderFollowUpData();ctx.showToast('Tindak lanjut diperbarui.','success');}catch(x){ctx.showToast(x.message,'error')}finally{buttonBusy(e.currentTarget,false)}});
+    document.querySelectorAll('[data-follow-filter]').forEach(b=>b.addEventListener('click',()=>{state.followUpFilter=b.dataset.followFilter||'all';renderFollowUpData();}));
+    try{await ensureData();await loadFailedFollowUps();renderFollowUpData();}catch(err){document.getElementById('followUpContent').innerHTML=`<div class="alert error">${esc(err.message)}</div>`;}
   }
 
-  function markSelfPickup(id){
-    const item=state.failedFollowUps.find(x=>String(x.record?.['ID Sistem']||x.attempt?.parentId)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan daftar.','error');const r=item.record||{},a=item.attempt||{};
-    if(!a.followupWaAt)return ctx.showToast('Hubungi pasien melalui WhatsApp terlebih dahulu.','warning');
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">AMBIL MANDIRI</div><h3>Alihkan Tindak Lanjut ke Loket Farmasi</h3><p>${esc(r['Nama Pasien']||'-')} • ${esc(r['No RM']||'-')}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box">Gunakan setelah pasien/penerima mengonfirmasi memilih mengambil obat secara mandiri. Status pengantaran tetap <b>GAGAL ANTAR</b>; outcome Farmasi dicatat terpisah sebagai <b>AMBIL MANDIRI</b>.</div><div class="field"><label for="self-pickup-note">Catatan <span>opsional</span></label><textarea id="self-pickup-note" rows="3">Pasien/penerima memilih mengambil obat secara mandiri di Farmasi setelah dikonfirmasi.</textarea></div><div id="selfPickupMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="selfPickupSubmit" class="primary-btn">Simpan Ambil Mandiri</button></div>`);
-    document.getElementById('selfPickupSubmit')?.addEventListener('click',async()=>{const b=document.getElementById('selfPickupSubmit');const note=document.getElementById('self-pickup-note')?.value.trim()||'';buttonBusy(b,true,'Menyimpan…');try{await api().markSelfPickup(token(),id,note);await loadFailedFollowUps();ctx.showToast('Tindak lanjut Ambil Mandiri disimpan.','success');renderFailedFollowUpsModal();}catch(e){document.getElementById('selfPickupMsg').innerHTML=`<div class="alert error">${esc(e.message)}</div>`;}finally{buttonBusy(b,false);}});
+  function renderFollowUpData(anchorId=''){
+    const rows=state.failedFollowUps||[];
+    const counts={return:0,contact:0,decision:0,retry:0,pickup:0};
+    rows.forEach(item=>{const p=followUpPhase(item);if(counts[p]!==undefined)counts[p]++;});
+    const metrics=document.getElementById('followUpMetrics');
+    if(metrics)metrics.innerHTML=[
+      metric('Perlu Tindakan',rows.length,'Total antrean aktif','↺'),
+      metric('Menunggu Obat',counts.return,'Belum diterima kembali','▣'),
+      metric('Konfirmasi Pasien',counts.contact,'Perlu WhatsApp','💬'),
+      metric('Retry',counts.retry,'Terjadwal / siap dibuat','➜'),
+      metric('Ambil Mandiri',counts.pickup,'Menunggu di loket','●')
+    ].join('');
+    document.querySelectorAll('[data-follow-filter]').forEach(b=>b.classList.toggle('active',(b.dataset.followFilter||'all')===state.followUpFilter));
+    const filtered=state.followUpFilter==='all'?rows:rows.filter(x=>followUpPhase(x)===state.followUpFilter);
+    const content=document.getElementById('followUpContent');
+    if(!content)return;
+    content.innerHTML=filtered.length?filtered.map(failedFollowUpCard).join(''):`<div class="empty-state"><h3>${rows.length?'Tidak ada kasus pada filter ini':'Tidak ada tindak lanjut aktif'}</h3><p>${rows.length?'Pilih filter lain untuk melihat antrean.':'Semua gagal antar sudah selesai ditindaklanjuti.'}</p></div>`;
+    bindFollowUpEvents();
+    syncFarmasiBadges();
+    if(anchorId)requestAnimationFrame(()=>document.getElementById(`follow-card-${safeDomId(anchorId)}`)?.scrollIntoView({block:'nearest',behavior:'auto'}));
   }
 
-  async function confirmReturned(id,button){
-    const yes=await ctx.confirmAction({title:'Konfirmasi obat sudah kembali?',message:'Pastikan paket obat sudah diterima kembali secara fisik oleh Farmasi sebelum melanjutkan.',confirmLabel:'Ya, Obat Sudah Kembali'});if(!yes)return;
-    buttonBusy(button,true,'Menyimpan…');try{await api().confirmReturnedToFarmasi(token(),id);await loadFailedFollowUps();ctx.showToast('Obat dikonfirmasi kembali ke Farmasi. Hubungi pasien sebelum menetapkan tindak lanjut.','success');renderFailedFollowUpsModal();}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+  function failedFollowUpCard(item){
+    const a=item.attempt||{},r=item.record||{};const id=followUpId(item),dom=safeDomId(id);
+    const returned=String(a.returnStatus||'')==='SUDAH KEMBALI';const provisional=String(a.status||'')==='GAGAL DILAPORKAN'&&!a.result;
+    const contacted=Boolean(String(a.followupWaAt||'').trim());const planned=normalizeDateKey(a.plannedDate);const due=planned?isDateDue(planned):false;
+    const attemptNo=Number(a.attemptNo||1),maxAttempts=Number(a.maxAttempts||2),maxReached=attemptNo>=maxAttempts;
+    const resolution=String(a.resolution||'');const waitingPickup=resolution==='MENUNGGU AMBIL MANDIRI'||Boolean(a.waitingSelfPickup);
+    const stateBadge=provisional?'<span class="status-badge warning">GAGAL DILAPORKAN</span>':'<span class="status-badge failed">GAGAL ANTAR</span>';
+    let action='';
+    if(!returned){
+      action=`<div class="followup-action-zone"><div class="notice-box">Obat belum dikonfirmasi kembali. Jika pasien ditemukan sebelum paket kembali, Kurir masih dapat melanjutkan attempt yang sama.</div><button class="primary-btn" data-confirm-return="${esc(id)}">✓ Konfirmasi Obat Sudah Kembali</button></div>`;
+    }else if(waitingPickup){
+      const wa=state.followUpWaActions[id];
+      action=`<div class="followup-action-zone"><div class="pickup-wait-box"><span class="status-badge warning">MENUNGGU AMBIL MANDIRI</span><h5>Obat menunggu di Loket Farmasi</h5><p>Kasus baru selesai setelah obat benar-benar diserahkan kepada pasien/penerima.</p>${wa?.url?`<a class="mini-btn" href="${esc(wa.url)}" target="_blank" rel="noopener">💬 Buka ulang WhatsApp</a>`:''}</div><button class="primary-btn" data-open-follow-panel="pickupConfirm" data-id="${esc(id)}">✓ Konfirmasi Obat Telah Diambil</button></div>`;
+    }else if(maxReached){
+      action=`<div class="followup-action-zone"><div class="max-attempt-box"><span class="status-badge failed">BATAS PENGANTARAN TERCAPAI</span><h5>Pengantaran telah gagal ${maxAttempts} kali</h5><p>Tidak ada Attempt ${attemptNo+1}. Setelah obat kembali, pasien wajib diberi tahu untuk mengambil obat secara mandiri di Loket Farmasi.</p></div><button class="whatsapp-btn" data-followup-wa="${esc(id)}">💬 WA Pasien — Ambil Mandiri</button></div>`;
+    }else if(!contacted){
+      action=`<div class="followup-action-zone"><div class="notice-box">Hubungi pasien terlebih dahulu. Pesan ini belum menetapkan tanggal pengantaran ulang.</div><button class="whatsapp-btn" data-followup-wa="${esc(id)}">💬 WA Konfirmasi Pasien</button></div>`;
+    }else if(!planned){
+      action=`<div class="followup-action-zone"><div class="followup-confirmed"><span class="status-badge success">✓ PASIEN SUDAH DIHUBUNGI</span><small>WA disiapkan ${esc(a.followupWaAt||'')}</small></div><div class="row-actions"><button class="primary-btn" data-open-follow-panel="schedule" data-id="${esc(id)}">Jadwalkan Pengantaran Ulang</button><button class="secondary-btn" data-open-follow-panel="pickup" data-id="${esc(id)}">Ambil Mandiri</button><button class="danger-soft-btn" data-open-follow-panel="close" data-id="${esc(id)}">Tutup Layanan</button></div></div>`;
+    }else{
+      action=`<div class="followup-action-zone"><div class="followup-confirmed"><span class="status-badge success">✓ PASIEN SUDAH DIHUBUNGI</span><small>WA disiapkan ${esc(a.followupWaAt||'')}</small></div><div class="retry-plan-box"><div><span>Rencana pengantaran ulang</span><b>${planned===todayKey()?'HARI INI • ':''}${esc(formatDateId(planned))}</b></div><button class="mini-btn" data-open-follow-panel="schedule" data-id="${esc(id)}">Edit Rencana</button></div><div class="row-actions">${due?`<button class="primary-btn" data-open-follow-panel="retry" data-id="${esc(id)}">Buat Attempt ${attemptNo+1}</button>`:`<button class="primary-btn" disabled title="Attempt baru aktif pada tanggal rencana">Belum Waktunya Retry</button>`}<button class="secondary-btn" data-open-follow-panel="pickup" data-id="${esc(id)}">Ambil Mandiri</button><button class="danger-soft-btn" data-open-follow-panel="close" data-id="${esc(id)}">Tutup Layanan</button></div></div>`;
+    }
+    const expanded=state.followUpExpanded[id]||'';
+    return `<article class="redelivery-card followup-page-card" id="follow-card-${dom}" data-followup-card="${esc(id)}"><div class="redelivery-head"><div>${stateBadge}${attemptNo>1?` <span class="status-badge warning">ATTEMPT ${attemptNo}</span>`:''}<h4>${esc(r['Nama Pasien']||'-')}</h4><p>No. RM ${esc(r['No RM']||'-')} • ${esc([r['Kelurahan'],r['Kecamatan']].filter(Boolean).join(' • '))}</p></div><div class="return-state ${returned?'ok':'wait'}">${returned?'✓ Obat sudah kembali':'Menunggu obat kembali'}</div></div><div class="redelivery-detail"><div><span>Kurir</span><b>${esc(a.courier||r['Kurir']||'-')}</b></div><div><span>Alasan</span><b>${esc(a.failureReason||r['Alasan Gagal']||'-')}</b></div><div><span>Status obat</span><b>${returned?'Sudah diterima Farmasi':'Wajib dikembalikan ke Farmasi'}</b></div><div><span>Waktu laporan</span><b>${esc(a.failureReportedAt||a.completedAt||'-')}</b></div></div>${a.failureDetail?`<p class="redelivery-note">${esc(a.failureDetail)}</p>`:''}${action}${expanded?followUpInlinePanel(item,expanded):''}</article>`;
   }
 
-  function openReschedule(id){
-    const item=state.failedFollowUps.find(x=>String(x.record?.['ID Sistem']||x.attempt?.parentId)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan daftar.','error');const r=item.record||{},a=item.attempt||{};
-    if(!String(r['No RM']||'').trim()||!String(r['Nama Pasien']||'').trim())return ctx.showToast('Identitas kasus induk belum berhasil dimuat. Segarkan halaman; jangan mengetik ulang No. RM atau nama pasien.','error');
-    if(!a.followupWaAt)return ctx.showToast('Hubungi pasien melalui WhatsApp terlebih dahulu.','warning');
-    const schedule=normalizeDateKey(a.plannedDate);if(!schedule)return ctx.showToast('Simpan rencana tanggal pengantaran ulang terlebih dahulu.','warning');
-    if(!isDateDue(schedule))return ctx.showToast(`Pengantaran ulang direncanakan ${formatDateId(schedule)}. Attempt baru aktif pada tanggal tersebut.`,'warning',8000);
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PENGANTARAN ULANG</div><h3>Buat Attempt ${Number(a.attemptNo||1)+1}</h3><p>Identitas pasien otomatis dari pendaftaran awal dan tidak dapat diubah. Periksa hanya kontak, alamat, patokan, dan penerima.</p></div><button class="modal-x" data-modal-close>×</button></div><form id="retryForm">${renderDeliveryFields(r,'retry')}<div class="field" style="margin-top:12px"><label>Tanggal pengantaran ulang</label><div class="readonly-date-value">${esc(formatDateId(schedule))}${schedule===todayKey()?' • HARI INI':''}</div><input id="retry-schedule" type="hidden" value="${esc(schedule)}"></div><div class="field" style="margin-top:12px"><label for="retry-note">Catatan attempt <span>opsional</span></label><textarea id="retry-note" rows="2" placeholder="Contoh: pasien sudah dikonfirmasi dan alamat diperiksa kembali"></textarea></div><div class="notice-box">No. RM dan Nama Pasien berasal dari kasus induk. Kode penerimaan lama tidak berlaku; sistem membuat kode baru untuk attempt ini.</div><div class="modal-actions"><button class="secondary-btn" type="button" data-modal-close>Batal</button><button id="retrySubmit" class="primary-btn" type="submit">Buat Attempt ${Number(a.attemptNo||1)+1}</button></div></form>`,{wide:true});
-    const rm=document.getElementById('retry-rm'),nm=document.getElementById('retry-name');[rm,nm].forEach(el=>{if(el){el.readOnly=true;el.classList.add('locked-input');el.setAttribute('aria-readonly','true');el.tabIndex=-1;}});bindAreaSearch('retry');
-    document.getElementById('retryForm')?.addEventListener('submit',async e=>{e.preventDefault();if(!validateForm('retry'))return;const btn=document.getElementById('retrySubmit');buttonBusy(btn,true,'Membuat…');try{const payload=formPayload('retry');payload.scheduleDate=schedule;payload.note=document.getElementById('retry-note')?.value.trim()||'';const res=await api().rescheduleDelivery(token(),id,payload);ctx.closeModal();await Promise.all([loadFailedFollowUps(),loadRows('')]);ctx.showToast(res.message||'Pengantaran ulang dibuat.','success');if(res.data?.waAction)openWhatsAppModal(res.data.waAction,res.data?.record||r,{title:`Kode baru • Attempt ${res.data?.attempt?.attemptNo||''}`,description:'Kirim kode penerimaan baru untuk attempt pengantaran ulang ini.'});}catch(x){ctx.showToast(x.message,'error')}finally{buttonBusy(btn,false)}});
+  function followUpInlinePanel(item,panel){
+    const a=item.attempt||{},r=item.record||{},id=followUpId(item),dom=safeDomId(id);const planned=normalizeDateKey(a.plannedDate);const today=todayKey(),tomorrow=tomorrowKey();
+    if(panel==='schedule'){
+      const selected=planned||tomorrow;const mode=planned===today?'today':(!planned||planned===tomorrow?'tomorrow':'other');
+      return `<div class="followup-inline-panel"><div class="inline-panel-head"><div><span>JADWAL RETRY</span><h5>${planned?'Edit':'Tentukan'} rencana pengantaran ulang</h5></div><button class="mini-btn" data-close-follow-panel="${esc(id)}">Tutup</button></div><div class="notice-box">Pilihan utama adalah besok/hari operasional berikutnya. Hari ini hanya bila kondisi pelayanan dan Kurir masih memungkinkan.</div><form data-schedule-form="${esc(id)}"><div class="retry-date-options compact"><label class="retry-date-option"><input type="radio" name="retry-mode-${dom}" value="tomorrow" ${mode==='tomorrow'?'checked':''}><span><b>Besok / hari operasional berikutnya</b><small>${esc(formatDateId(tomorrow))}</small></span></label><label class="retry-date-option"><input type="radio" name="retry-mode-${dom}" value="today" ${mode==='today'?'checked':''}><span><b>Hari ini</b><small>${esc(formatDateId(today))} • pengecualian</small></span></label><label class="retry-date-option"><input type="radio" name="retry-mode-${dom}" value="other" ${mode==='other'?'checked':''}><span><b>Tanggal lain</b><small>Sesuai permintaan pasien / hari operasional.</small></span></label></div><div class="field ${mode==='other'?'':'hidden'}" data-custom-date-wrap="${dom}"><label>Tanggal pengantaran ulang *</label><input type="date" data-custom-date="${dom}" value="${esc(mode==='other'?selected:tomorrow)}" min="${esc(today)}"></div><label class="check-row same-day-confirm ${mode==='today'?'':'hidden'}" data-today-confirm-wrap="${dom}"><input type="checkbox" data-today-confirm="${dom}" ${mode==='today'?'':' '}><span>Saya sudah memastikan pengantaran ulang hari ini masih memungkinkan secara operasional.</span></label><div class="field"><label>Catatan ketersediaan pasien <span>opsional</span></label><textarea data-schedule-note="${dom}" rows="2" placeholder="Contoh: pasien berada di rumah setelah pukul 13.00. Bukan janji jam pengiriman.">${esc(a.resolutionNote||'')}</textarea></div><div class="inline-actions"><button type="button" class="secondary-btn" data-close-follow-panel="${esc(id)}">Batal</button><button type="submit" class="primary-btn">Simpan Rencana</button></div></form></div>`;
+    }
+    if(panel==='retry'){
+      const schedule=planned,prefix=`retry-${dom}`;
+      if(!schedule)return '';
+      return `<div class="followup-inline-panel retry-inline-panel"><div class="inline-panel-head"><div><span>PENGANTARAN ULANG</span><h5>Buat Attempt ${Number(a.attemptNo||1)+1}</h5><p>No. RM dan nama pasien otomatis dari pendaftaran awal.</p></div><button class="mini-btn" data-close-follow-panel="${esc(id)}">Tutup</button></div><form data-inline-retry="${esc(id)}" data-prefix="${prefix}">${renderDeliveryFields(r,prefix)}<div class="field"><label>Tanggal pengantaran ulang</label><div class="readonly-date-value">${esc(formatDateId(schedule))}${schedule===today?' • HARI INI':''}</div></div><div class="field"><label>Catatan attempt <span>opsional</span></label><textarea data-retry-note="${dom}" rows="2" placeholder="Pasien sudah dikonfirmasi; alamat diperiksa kembali"></textarea></div><div class="notice-box">Kode penerimaan lama tidak berlaku. Sistem membuat kode baru untuk Attempt ${Number(a.attemptNo||1)+1}.</div><div class="inline-actions"><button type="button" class="secondary-btn" data-close-follow-panel="${esc(id)}">Batal</button><button type="submit" class="primary-btn">Buat Attempt ${Number(a.attemptNo||1)+1}</button></div></form></div>`;
+    }
+    if(panel==='pickup')return `<div class="followup-inline-panel"><div class="inline-panel-head"><div><span>AMBIL MANDIRI</span><h5>Pasien memilih mengambil obat di Farmasi</h5></div><button class="mini-btn" data-close-follow-panel="${esc(id)}">Tutup</button></div><div class="notice-box">Simpan pilihan ini setelah pasien mengonfirmasi. Kasus tetap berada di Tindak Lanjut sampai obat benar-benar diambil.</div><div class="field"><label>Catatan <span>opsional</span></label><textarea data-pickup-note="${dom}" rows="2">Pasien/penerima memilih mengambil obat secara mandiri di Loket Farmasi.</textarea></div><div class="inline-actions"><button class="secondary-btn" data-close-follow-panel="${esc(id)}">Batal</button><button class="primary-btn" data-save-pickup="${esc(id)}">Simpan & Tunggu Pengambilan</button></div></div>`;
+    if(panel==='pickupConfirm')return `<div class="followup-inline-panel"><div class="inline-panel-head"><div><span>KONFIRMASI LOKET</span><h5>Obat benar-benar sudah diambil?</h5></div><button class="mini-btn" data-close-follow-panel="${esc(id)}">Tutup</button></div><div class="field"><label>Catatan serah terima <span>opsional</span></label><textarea data-pickup-confirm-note="${dom}" rows="2">Obat telah diserahkan langsung di Loket Farmasi kepada pasien/penerima.</textarea></div><div class="inline-actions"><button class="secondary-btn" data-close-follow-panel="${esc(id)}">Batal</button><button class="primary-btn" data-confirm-pickup="${esc(id)}">✓ Konfirmasi Obat Telah Diambil</button></div></div>`;
+    if(panel==='close')return `<div class="followup-inline-panel"><div class="inline-panel-head"><div><span>TUTUP LAYANAN</span><h5>Tidak dilakukan pengantaran ulang</h5></div><button class="mini-btn" data-close-follow-panel="${esc(id)}">Tutup</button></div><div class="field"><label>Alasan / keputusan Farmasi *</label><textarea data-close-note="${dom}" rows="3" placeholder="Tuliskan alasan penutupan layanan"></textarea></div><div class="inline-actions"><button class="secondary-btn" data-close-follow-panel="${esc(id)}">Batal</button><button class="danger-btn" data-save-close="${esc(id)}">Tutup Layanan</button></div></div>`;
+    return '';
   }
 
-  function openCloseFailed(id){
-    const item=state.failedFollowUps.find(x=>String(x.record?.['ID Sistem']||x.attempt?.parentId)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan daftar.','error');if(!item.attempt?.followupWaAt)return ctx.showToast('Hubungi pasien melalui WhatsApp terlebih dahulu.','warning');
-    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">TUTUP LAYANAN</div><h3>Tidak Dilakukan Pengantaran Ulang</h3><p>Status akhir kasus tetap GAGAL ANTAR dan riwayat attempt tetap tersimpan.</p></div><button class="modal-x" data-modal-close>×</button></div><div class="field"><label for="close-failed-note">Alasan / keputusan Farmasi *</label><textarea id="close-failed-note" rows="4" placeholder="Contoh: pasien menyatakan tidak memerlukan pengantaran ulang setelah dikonfirmasi"></textarea></div><div id="closeFailedMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="closeFailedSubmit" class="danger-btn">Tutup Layanan</button></div>`);
-    document.getElementById('closeFailedSubmit')?.addEventListener('click',async e=>{const note=document.getElementById('close-failed-note')?.value.trim()||'';if(!note)return ctx.showToast('Catatan penutupan wajib diisi.','error');buttonBusy(e.currentTarget,true,'Menyimpan…');try{await api().closeFailedDelivery(token(),id,note);ctx.closeModal();await loadFailedFollowUps();ctx.showToast('Layanan ditutup. Riwayat gagal antar tetap tersimpan.','success')}catch(x){ctx.showToast(x.message,'error')}finally{buttonBusy(e.currentTarget,false)}});
+  async function refreshFollowUp(anchorId=''){
+    await loadFailedFollowUps();
+    if(document.getElementById('followUpContent'))renderFollowUpData(anchorId);
+  }
+
+  function bindFollowUpEvents(){
+    document.querySelectorAll('[data-open-follow-panel]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.id||'';state.followUpExpanded[id]=b.dataset.openFollowPanel||'';renderFollowUpData(id);}));
+    document.querySelectorAll('[data-close-follow-panel]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.closeFollowPanel||'';delete state.followUpExpanded[id];renderFollowUpData(id);}));
+    document.querySelectorAll('[data-confirm-return]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.confirmReturn;buttonBusy(b,true,'Menyimpan…');try{await api().confirmReturnedToFarmasi(token(),id);await refreshFollowUp(id);ctx.showToast('Obat dikonfirmasi kembali ke Farmasi.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(b,false)}}));
+    document.querySelectorAll('[data-followup-wa]').forEach(b=>b.addEventListener('click',()=>openFollowupWaDirect(b.dataset.followupWa,b)));
+    document.querySelectorAll('[data-schedule-form]').forEach(form=>{const id=form.dataset.scheduleForm,dom=safeDomId(id),radios=form.querySelectorAll(`input[name="retry-mode-${dom}"]`),wrap=form.querySelector(`[data-custom-date-wrap="${dom}"]`),todayWrap=form.querySelector(`[data-today-confirm-wrap="${dom}"]`);radios.forEach(el=>el.addEventListener('change',()=>{if(!el.checked)return;wrap?.classList.toggle('hidden',el.value!=='other');todayWrap?.classList.toggle('hidden',el.value!=='today');}));form.addEventListener('submit',e=>saveScheduleInline(e,id,dom));});
+    document.querySelectorAll('[data-inline-retry]').forEach(form=>{const prefix=form.dataset.prefix;const id=form.dataset.inlineRetry;const rm=document.getElementById(`${prefix}-rm`),nm=document.getElementById(`${prefix}-name`);[rm,nm].forEach(el=>{if(el){el.readOnly=true;el.classList.add('locked-input');el.tabIndex=-1;}});bindAreaSearch(prefix);form.addEventListener('submit',e=>createRetryInline(e,id,prefix));});
+    document.querySelectorAll('[data-save-pickup]').forEach(b=>b.addEventListener('click',()=>saveSelfPickupInline(b.dataset.savePickup,b)));
+    document.querySelectorAll('[data-confirm-pickup]').forEach(b=>b.addEventListener('click',()=>confirmSelfPickupInline(b.dataset.confirmPickup,b)));
+    document.querySelectorAll('[data-save-close]').forEach(b=>b.addEventListener('click',()=>closeFailedInline(b.dataset.saveClose,b)));
+  }
+
+  function reserveWhatsAppWindow(){
+    const w=window.open('about:blank','_blank');
+    if(w){try{w.document.write('<!doctype html><title>Menyiapkan WhatsApp…</title><body style="font-family:Arial;padding:24px">Menyiapkan WhatsApp…</body>');w.document.close();}catch(_){}}
+    return w;
+  }
+
+  async function openFollowupWaDirect(id,button){
+    const w=reserveWhatsAppWindow();buttonBusy(button,true,'Menyiapkan WA…');
+    try{const res=await api().failedFollowupWa(token(),id);const wa=res.data?.waAction||null;if(wa)state.followUpWaActions[id]=wa;await refreshFollowUp(id);if(wa?.url){if(w)w.location.href=wa.url;else{ctx.showToast('Browser memblokir tab WhatsApp. Gunakan tombol Buka ulang WhatsApp pada kartu.','warning',7000);}}else{if(w)w.close();ctx.showToast('Pesan WhatsApp tidak tersedia.','error');}}
+    catch(e){if(w)w.close();ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+  }
+
+  async function saveScheduleInline(ev,id,dom){
+    ev.preventDefault();const form=ev.currentTarget,btn=form.querySelector('button[type="submit"]');const choice=form.querySelector(`input[name="retry-mode-${dom}"]:checked`)?.value||'tomorrow';const today=todayKey(),tomorrow=tomorrowKey();const custom=form.querySelector(`[data-custom-date="${dom}"]`)?.value||'';const selected=choice==='today'?today:choice==='tomorrow'?tomorrow:custom;if(!selected)return ctx.showToast('Pilih tanggal pengantaran ulang.','error');const note=form.querySelector(`[data-schedule-note="${dom}"]`)?.value.trim()||'';if(choice==='today'&&!form.querySelector(`[data-today-confirm="${dom}"]`)?.checked)return ctx.showToast('Konfirmasi dulu bahwa retry hari ini masih memungkinkan secara operasional.','warning',6500);buttonBusy(btn,true,'Menyimpan…');try{await api().planRedelivery(token(),id,{scheduleDate:selected,note});delete state.followUpExpanded[id];await refreshFollowUp(id);ctx.showToast(`Rencana retry disimpan: ${formatDateId(selected)}.`,'success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
+  }
+
+  async function createRetryInline(ev,id,prefix){
+    ev.preventDefault();if(!validateForm(prefix))return;const item=state.failedFollowUps.find(x=>followUpId(x)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan halaman.','error');const a=item.attempt||{},r=item.record||{};const schedule=normalizeDateKey(a.plannedDate);if(!schedule||!isDateDue(schedule))return ctx.showToast('Tanggal retry belum tiba.','warning');const btn=ev.currentTarget.querySelector('button[type="submit"]');const w=reserveWhatsAppWindow();buttonBusy(btn,true,'Membuat…');try{const payload=formPayload(prefix);payload.scheduleDate=schedule;payload.note=document.querySelector(`[data-retry-note="${safeDomId(id)}"]`)?.value.trim()||'';const res=await api().rescheduleDelivery(token(),id,payload);delete state.followUpExpanded[id];await Promise.all([loadFailedFollowUps(),loadRows('')]);renderFollowUpData();ctx.showToast(res.message||'Pengantaran ulang dibuat.','success');const wa=res.data?.waAction||null;if(wa?.url){if(w)w.location.href=wa.url;else ctx.showToast('Attempt dibuat, tetapi browser memblokir WhatsApp. Kode dapat dikirim ulang dari menu Hari Ini.','warning',8000);}else if(w)w.close();}catch(e){if(w)w.close();ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
+  }
+
+  async function saveSelfPickupInline(id,button){
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{await api().markSelfPickup(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp(id);ctx.showToast('Kasus menunggu pasien mengambil obat di Loket Farmasi.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+  }
+
+  async function confirmSelfPickupInline(id,button){
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-confirm-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{await api().confirmSelfPickup(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp();ctx.showToast('Obat dikonfirmasi telah diambil. Tindak lanjut selesai.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+  }
+
+  async function closeFailedInline(id,button){
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-close-note="${safeDomId(id)}"]`)?.value.trim()||'';if(!note)return ctx.showToast('Alasan penutupan layanan wajib diisi.','error');buttonBusy(button,true,'Menyimpan…');try{await api().closeFailedDelivery(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp();ctx.showToast('Layanan ditutup. Riwayat gagal antar tetap tersimpan.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
   }
 
   function resetForLogout() {
-    state.master = {areas:[],manualVerificationMethods:[]}; state.rows = []; state.pending = []; state.failedFollowUps = []; state.lastCreated = null; state.loaded = false; state.loading = null; state.search = '';
+    state.master = {areas:[],manualVerificationMethods:[]}; state.rows = []; state.pending = []; state.failedFollowUps = []; state.lastCreated = null; state.loaded = false; state.loading = null; state.search = ''; state.followUpFilter='all'; state.followUpExpanded={}; state.followUpWaActions={};
     try { sessionStorage.removeItem(APP_CONFIG.farmasiDraftKey); } catch (_) {}
   }
 
-  return { renderHome, renderRegistration, renderToday, renderVerification, renderLabels, resetForLogout };
+  return { renderHome, renderRegistration, renderToday, renderVerification, renderFollowUp, renderLabels, resetForLogout };
 }
