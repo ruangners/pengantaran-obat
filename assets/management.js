@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc3';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc3a';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -323,6 +323,16 @@ export function createManagementModule(ctx) {
       setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
     } catch (error) { preview.close(); ctx.showToast(error.message || 'PDF tidak dapat dibuat.', 'error'); }
     finally { button.disabled = false; button.textContent = previous; }
+  }
+
+
+  function resetForLogout() {
+    state.data = null;
+    state.loading = null;
+    state.lastLoadedKey = '';
+    state.basis = 'DAFTAR';
+    state.performanceTab = 'pharmacy';
+    applyPreset('month');
   }
 
   return { renderHome, renderPerformance, renderAreas, renderReports, resetForLogout };
