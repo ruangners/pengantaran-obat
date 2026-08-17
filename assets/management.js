@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc3a';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc4';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -54,6 +54,29 @@ export function createManagementModule(ctx) {
   }
   function metric(label, value, note = '', tone = '') {
     return `<div class="kpi-card ${tone}"><span>${esc(label)}</span><strong>${esc(String(value))}</strong>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
+  }
+
+  function executiveStatusCard(k = {}) {
+    const delivered = Number(k.delivered || 0);
+    const failed = Number(k.failed || 0);
+    const ready = Number(k.ready || 0);
+    const transit = Number(k.transit || 0);
+    const waiting = Number(k.waiting || 0);
+    const finished = delivered + failed;
+    const success = Math.max(0, Math.min(100, Number(k.successRate || 0) * 100));
+    return `<article class="executive-status-card">
+      <div class="executive-status-head"><div><span>STATUS LAYANAN</span><h3>Pengantaran pada periode ini</h3></div><strong>${n(finished)} selesai</strong></div>
+      <div class="executive-status-body">
+        <div class="success-donut" style="--success:${success.toFixed(1)}"><div><strong>${success.toFixed(1)}%</strong><span>berhasil</span></div></div>
+        <div class="executive-status-list">
+          <div class="success"><span>Terkirim</span><b>${n(delivered)}</b></div>
+          <div class="danger"><span>Gagal Antar</span><b>${n(failed)}</b></div>
+          <div class="transit"><span>Dalam Perjalanan</span><b>${n(transit)}</b></div>
+          <div class="ready"><span>Siap Diantar</span><b>${n(ready)}</b></div>
+          <div class="neutral"><span>Menunggu Diproses</span><b>${n(waiting)}</b></div>
+        </div>
+      </div>
+    </article>`;
   }
   function empty(title, text = '') {
     return `<div class="empty-state mgmt-empty"><h3>${esc(title)}</h3>${text ? `<p>${esc(text)}</p>` : ''}</div>`;
@@ -182,7 +205,7 @@ export function createManagementModule(ctx) {
   }
 
   async function renderHome() {
-    page().innerHTML = `${hero('Ringkasan Manajemen','Gambaran layanan pengantaran obat pada periode yang dipilih.')}<section class="section">${filterBar()}<div id="mgmtHome" class="mgmt-loading">Memuat data…</div></section>`;
+    page().innerHTML = `${hero('Ringkasan Eksekutif','Gambaran singkat layanan pengantaran obat untuk pemantauan dan pengambilan keputusan.')}<section class="section">${filterBar()}<div id="mgmtHome" class="mgmt-loading">Memuat data…</div></section>`;
     bindFilter(() => loadHome(true));
     document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawHome);
     await loadHome(false);
@@ -194,14 +217,16 @@ export function createManagementModule(ctx) {
   function drawHome() {
     const d = state.data || {}, k = d.kpi || {}, v = d.verification || {}, inc = d.incidentSummary || {};
     const root = document.getElementById('mgmtHome'); if (!root) return;
-    root.innerHTML = `<div class="section-head mgmt-subhead"><div><h2>Key Performance Indicator (KPI)</h2><p>Indikator utama layanan pada periode ${esc(periodLabel())}.</p></div></div>
-      <div class="kpi-grid mgmt-kpi-grid">${metric('Total Pendaftaran',n(k.total),'Kasus pada periode')}${metric('Terkirim',n(k.delivered),`${n(k.failed)} gagal antar`,'success-soft')}${metric('Tingkat Keberhasilan',pct(k.successRate),'Pengantaran berhasil dari pengantaran yang selesai')}${metric('Dalam Perjalanan',n(k.transit),`${n(k.ready)} siap diantar • ${n(k.waiting)} menunggu`)}${metric('Penerimaan Terverifikasi',pct(v.rate),`${n(v.verified)} dari ${n(v.eligible)} penerimaan`)}${metric('Kendala Aktif',n(inc.active),`${n(inc.total)} kendala tercatat`,'warning-soft')}</div>
+    root.innerHTML = `<div class="executive-heading"><div><span>RINGKASAN EKSEKUTIF</span><h2>Key Performance Indicator (KPI)</h2><p>Indikator utama layanan pada periode ${esc(periodLabel())}.</p></div></div>
+      <div class="kpi-grid mgmt-kpi-grid executive-kpi-grid">${metric('Total Pendaftaran',n(k.total),'Kasus pada periode','neutral-soft')}${metric('Terkirim',n(k.delivered),`${n(k.failed)} gagal antar`,'success-soft')}${metric('Gagal Antar',n(k.failed),'Pengantaran yang tidak berhasil','danger-soft')}${metric('Dalam Perjalanan',n(k.transit),`${n(k.ready)} siap diantar`,'transit-soft')}${metric('Penerimaan Terverifikasi',pct(v.rate),`${n(v.verified)} dari ${n(v.eligible)} penerimaan`,'teal-soft')}${metric('Kendala Aktif',n(inc.active),`${n(inc.total)} kendala tercatat`,'warning-soft')}</div>
+      <div class="executive-overview-grid"><div class="content-card mgmt-chart-card executive-trend-card"><div class="mgmt-card-head"><div><span class="section-kicker">TREN LAYANAN</span><h3>Pergerakan Harian</h3><p>Pendaftaran, terkirim, dan gagal antar.</p></div></div>${lineChart(d.daily||[])}</div>${executiveStatusCard(k)}</div>
       ${activeIncidentPanel(d.activeIncidents || [])}
       <div class="section-head mgmt-subhead"><div><h2>Waktu Layanan</h2><p>Durasi digunakan untuk membaca proses layanan, bukan sebagai satu-satunya ukuran kinerja petugas.</p></div></div>
-      <div class="time-insight-grid">${timeInsight(d.timeStats?.total,'Total Waktu Layanan','Pendaftaran hingga obat diterima')}${timeInsight(d.timeStats?.pharmacy,'Pendaftaran hingga Siap Diantar')}${timeInsight(d.timeStats?.consolidation,'Menunggu Diambil Kurir')}${timeInsight(d.timeStats?.courier,'Durasi Penyelesaian Pengantaran')}</div>
-      <div class="mgmt-dashboard-grid"><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Tren Harian</h3><p>Pendaftaran, terkirim, dan gagal antar.</p></div></div>${lineChart(d.daily||[])}</div><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Verifikasi Penerimaan</h3><p>Status verifikasi penerimaan obat.</p></div></div>${verificationPanel(v)}</div></div>
-      <div class="mgmt-dashboard-grid">${deliverySummary(d.deliveryAnalytics||{})}<div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Wilayah Pengantaran Terkirim</h3><p>Tujuan pengantaran terbanyak.</p></div></div>${barRanking(d.deliveredRegions||[],8)}</div></div>`;
+      <div class="time-insight-grid executive-time-grid">${timeInsight(d.timeStats?.total,'Total Waktu Layanan','Pendaftaran hingga obat diterima')}${timeInsight(d.timeStats?.pharmacy,'Pendaftaran hingga Siap Diantar')}${timeInsight(d.timeStats?.consolidation,'Menunggu Diambil Kurir')}${timeInsight(d.timeStats?.courier,'Durasi Penyelesaian Pengantaran')}</div>
+      <div class="mgmt-dashboard-grid"><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Verifikasi Penerimaan</h3><p>Status verifikasi penerimaan obat.</p></div></div>${verificationPanel(v)}</div>${deliverySummary(d.deliveryAnalytics||{})}</div>
+      <div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Wilayah Pengantaran Terkirim</h3><p>Tujuan pengantaran terbanyak.</p></div></div>${barRanking(d.deliveredRegions||[],8)}</div>`;
   }
+
 
   async function renderPerformance() {
     page().innerHTML = `${hero('Kinerja Layanan & Petugas','Aktivitas Farmasi dan Kurir pada periode yang dipilih.','KINERJA')}<section class="section">${filterBar()}<div class="segmented-tabs performance-tabs"><button data-performance-tab="pharmacy" class="${state.performanceTab==='pharmacy'?'active':''}">Farmasi</button><button data-performance-tab="courier" class="${state.performanceTab==='courier'?'active':''}">Kurir</button></div><div id="mgmtPerformance" class="mgmt-loading">Memuat kinerja…</div></section>`;

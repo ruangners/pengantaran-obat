@@ -1,5 +1,6 @@
 const PAGE_W = 1240;
 const PAGE_H = 1754;
+const RENDER_SCALE = 2;
 const MARGIN = 72;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const FONT = 'Arial, Helvetica, sans-serif';
@@ -57,8 +58,8 @@ class Painter {
     this.newPage(true);
   }
   newPage(first=false) {
-    const canvas = document.createElement('canvas'); canvas.width=PAGE_W; canvas.height=PAGE_H;
-    const ctx = canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,PAGE_W,PAGE_H);
+    const canvas = document.createElement('canvas'); canvas.width=PAGE_W*RENDER_SCALE; canvas.height=PAGE_H*RENDER_SCALE;
+    const ctx = canvas.getContext('2d'); ctx.scale(RENDER_SCALE,RENDER_SCALE); ctx.fillStyle='#fff'; ctx.fillRect(0,0,PAGE_W,PAGE_H);
     this.pages.push(canvas); this.page=canvas; this.ctx=ctx;
     this.y = first ? this.drawMainHeader() : this.drawContinuationHeader();
   }
@@ -109,22 +110,23 @@ class Painter {
     ];
     const gap=14, cols=2, w=(CONTENT_W-gap)/2;
     for(let i=0;i<items.length;i+=2){
-      this.ensure(135);
+      this.ensure(148);
       for(let c=0;c<2;c++){
         const [label,x]=items[i+c]||[]; if(!label) continue; const sample=Number(x?.sample||0), px=MARGIN+c*(w+gap);
-        roundedRect(this.ctx,px,this.y,w,120,12,COLORS.pale,COLORS.line);
+        roundedRect(this.ctx,px,this.y,w,132,12,COLORS.pale,COLORS.line);
         this.font(14,800); this.ctx.fillStyle=COLORS.navy; this.ctx.fillText(label,px+18,this.y+26);
         if(!sample){ this.font(18,700); this.ctx.fillStyle=COLORS.muted; this.ctx.fillText('Belum ada data',px+18,this.y+64); }
         else if(sample < this.minStatsSample){
           this.font(13,700); this.ctx.fillStyle=COLORS.ink; this.ctx.fillText(`Mean (rata-rata): ${minutes(x.average)}`,px+18,this.y+58);
           this.font(11,400); this.ctx.fillStyle=COLORS.muted; this.ctx.fillText(`${n(sample)} pengantaran dianalisis. Median/P90 belum cukup data.`,px+18,this.y+84);
         } else {
-          this.font(12,700); this.ctx.fillStyle=COLORS.ink; this.ctx.fillText(`Mean (rata-rata): ${minutes(x.average)}`,px+18,this.y+51);
-          this.ctx.fillText(`Median (nilai tengah): ${minutes(x.median)}`,px+18,this.y+75);
-          this.ctx.fillText(`P90 (90% selesai dalam): <= ${minutes(x.p90)}`,px+18,this.y+99);
+          this.font(12,700); this.ctx.fillStyle=COLORS.ink; this.ctx.fillText(`Mean (rata-rata): ${minutes(x.average)}`,px+18,this.y+50);
+          this.ctx.fillText(`Median (nilai tengah): ${minutes(x.median)}`,px+18,this.y+76);
+          this.ctx.fillText(`P90 (90% selesai dalam): <= ${minutes(x.p90)}`,px+18,this.y+102);
+          this.font(10,400); this.ctx.fillStyle=COLORS.muted; this.ctx.fillText(`${n(sample)} pengantaran dianalisis`,px+18,this.y+122);
         }
       }
-      this.y += 134;
+      this.y += 146;
     }
   }
   table(title, headers, rows, widths=null) {
@@ -177,7 +179,7 @@ function pdfFromJpegs(jpegs, title='Laporan Pengantaran Obat') {
   for(let i=0;i<pageCount;i++){
     const pageObj=3+i*3, imgObj=pageObj+1, contentObj=pageObj+2, bytes=dataUrlBytes(jpegs[i]);
     objects[pageObj]=enc(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im${i+1} ${imgObj} 0 R >> >> /Contents ${contentObj} 0 R >>`);
-    objects[imgObj]=concat([enc(`<< /Type /XObject /Subtype /Image /Width ${PAGE_W} /Height ${PAGE_H} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`),bytes,enc('\nendstream')]);
+    objects[imgObj]=concat([enc(`<< /Type /XObject /Subtype /Image /Width ${PAGE_W*RENDER_SCALE} /Height ${PAGE_H*RENDER_SCALE} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`),bytes,enc('\nendstream')]);
     const cmd=`q\n${pageW} 0 0 ${pageH} 0 0 cm\n/Im${i+1} Do\nQ\n`; const cb=enc(cmd);
     objects[contentObj]=concat([enc(`<< /Length ${cb.length} >>\nstream\n`),cb,enc('endstream')]);
   }
@@ -223,7 +225,7 @@ export async function buildManagementPdf(data,{logoUrl='./icons/logo-rsud.png',m
   p.table('Wilayah Terkirim',['Kabupaten/Kota','Jumlah'],(d.deliveredRegions||[]).slice(0,15).map(x=>[x.name,n(x.count)]),[4,1]);
   p.table('Alasan Gagal Antar',['Alasan','Jumlah'],(a.failureReasons||d.failureReasons||[]).slice(0,20).map(x=>[x.name,n(x.count)]),[4,1]);
   p.finalize();
-  const jpegs=p.pages.map(c=>c.toDataURL('image/jpeg',0.91));
+  const jpegs=p.pages.map(c=>c.toDataURL('image/jpeg',0.98));
   const title=`Laporan Pengantaran Obat ${fmtDate(d.meta?.start)} - ${fmtDate(d.meta?.end)}`;
   return pdfFromJpegs(jpegs,title);
 }
