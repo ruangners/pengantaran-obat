@@ -1,17 +1,15 @@
-function trustedAppsScriptMessageOrigin(origin) {
+function trustedResponseOrigin(origin) {
   try {
-    const u = new URL(origin);
-    if (u.protocol !== 'https:') return false;
-    return u.hostname === 'script.google.com' ||
-      u.hostname === 'script.googleusercontent.com' ||
-      u.hostname.endsWith('.googleusercontent.com');
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    return url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com' || url.hostname.endsWith('.googleusercontent.com');
   } catch (_) { return false; }
 }
 
-function makeError(message, code = 'APPS_SCRIPT_ERROR') {
-  const err = new Error(String(message || 'Terjadi kesalahan pada backend.'));
-  err.code = String(code || 'APPS_SCRIPT_ERROR');
-  return err;
+function apiError(message, code = 'API_ERROR') {
+  const error = new Error(String(message || 'Terjadi kesalahan pada server.'));
+  error.code = String(code || 'API_ERROR');
+  return error;
 }
 
 function stableKey(method, args) {
@@ -22,7 +20,7 @@ function stableKey(method, args) {
 
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-export class AppsScriptFormTransport {
+export class AppsScriptTransport {
   constructor({ endpoint, timeoutMs = 25000, expectedContract = '', onState = () => {}, onAuthError = () => {}, onRequestState = () => {} }) {
     this.endpoint = String(endpoint || '').trim();
     this.timeoutMs = timeoutMs;
@@ -38,58 +36,62 @@ export class AppsScriptFormTransport {
 
   destroy() {
     window.removeEventListener('message', this.boundMessage);
-    for (const [, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.cleanup();
-      pending.reject(makeError('Transport dihentikan.', 'TRANSPORT_STOPPED'));
-      this.onRequestState({ active: false, method: pending.method });
+    for (const [, request] of this.pending) {
+      clearTimeout(request.timer);
+      request.cleanup();
+      request.reject(apiError('Koneksi dihentikan.', 'TRANSPORT_STOPPED'));
+      this.onRequestState({ active: false, method: request.method });
     }
     this.pending.clear();
   }
 
   async connect() {
-    this.onState({ ready: false, message: 'Menguji koneksi backend…' });
-    const result = await this.call('stage2Ping');
+    this.onState({ ready: false, message: 'Menghubungkan layanan…' });
+    const result = await this.call('system.ping');
     const version = String(result?.data?.version || '');
     const contract = String(result?.data?.apiContract || '');
     if (this.expectedContract && contract !== this.expectedContract) {
-      throw makeError(`Kontrak API belum cocok. Backend ${version || 'tidak diketahui'} memakai ${contract || '(tidak ada kontrak)'}, sedangkan frontend mengharapkan ${this.expectedContract}. Pastikan backend dan frontend berasal dari paket rilis yang sama, lalu muat ulang aplikasi.`, 'VERSION_MISMATCH');
+      throw apiError(`Versi aplikasi dan server belum cocok. Server ${version || 'tidak diketahui'} menggunakan kontrak ${contract || '-'}, sedangkan aplikasi memerlukan ${this.expectedContract}.`, 'VERSION_MISMATCH');
     }
-    this.onState({ ready: true, message: `Backend siap • ${version}` });
+    this.onState({ ready: true, message: 'Layanan terhubung' });
     return result;
   }
 
   handleMessage(event) {
-    const msg = event.data || {};
-    if (msg.type !== 'ANTAROBAT_RPC_RESPONSE' || msg.nonce !== this.nonce || !msg.id) return;
-    const pending = this.pending.get(msg.id);
-    if (!pending) return;
+    const message = event.data || {};
+    if (message.type !== 'ANTAROBAT_RPC_RESPONSE' || message.nonce !== this.nonce || !message.id) return;
+    const request = this.pending.get(message.id);
+    if (!request) return;
 
-    if (!trustedAppsScriptMessageOrigin(event.origin)) {
-      clearTimeout(pending.timer); this.pending.delete(msg.id); pending.cleanup();
-      this.onRequestState({ active: false, method: pending.method });
-      pending.reject(makeError(`Origin respons tidak dipercaya: ${event.origin || '(kosong)'}`, 'UNTRUSTED_RESPONSE_ORIGIN'));
+    if (!trustedResponseOrigin(event.origin)) {
+      clearTimeout(request.timer);
+      this.pending.delete(message.id);
+      request.cleanup();
+      this.onRequestState({ active: false, method: request.method });
+      request.reject(apiError('Respons server berasal dari sumber yang tidak dipercaya.', 'UNTRUSTED_RESPONSE_ORIGIN'));
       return;
     }
 
-    clearTimeout(pending.timer); this.pending.delete(msg.id); pending.cleanup();
-    this.onRequestState({ active: false, method: pending.method });
-    if (msg.ok) return pending.resolve(msg.result);
+    clearTimeout(request.timer);
+    this.pending.delete(message.id);
+    request.cleanup();
+    this.onRequestState({ active: false, method: request.method });
+    if (message.ok) return request.resolve(message.result);
 
-    const err = makeError(msg.error?.message, msg.error?.code);
-    if (err.code === 'SESSION_EXPIRED') {
-      try { this.onAuthError(err); } catch (_) {}
+    const error = apiError(message.error?.message, message.error?.code);
+    if (error.code === 'SESSION_EXPIRED') {
+      try { this.onAuthError(error); } catch (_) {}
     }
-    pending.reject(err);
+    request.reject(error);
   }
 
   call(method, ...args) { return this._call(method, args, ''); }
   callMutation(method, mutationId, ...args) { return this._call(method, args, String(mutationId || '')); }
 
   _call(method, args, mutationId) {
-    if (!navigator.onLine) return Promise.reject(makeError('Perangkat sedang offline. Periksa koneksi internet lalu coba kembali.', 'OFFLINE'));
+    if (!navigator.onLine) return Promise.reject(apiError('Perangkat sedang offline. Periksa koneksi internet lalu coba kembali.', 'OFFLINE'));
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(this.endpoint)) {
-      return Promise.reject(makeError('URL backend harus berupa deployment Apps Script yang berakhir /exec.', 'INVALID_BACKEND_URL'));
+      return Promise.reject(apiError('Alamat layanan belum dikonfigurasi dengan benar.', 'INVALID_BACKEND_URL'));
     }
 
     const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -98,29 +100,43 @@ export class AppsScriptFormTransport {
 
     return new Promise((resolve, reject) => {
       const frame = document.createElement('iframe');
-      frame.name = frameName; frame.title = 'Apps Script RPC'; frame.style.display = 'none'; frame.setAttribute('aria-hidden', 'true');
+      frame.name = frameName;
+      frame.title = 'Server Pengantaran Obat';
+      frame.style.display = 'none';
+      frame.setAttribute('aria-hidden', 'true');
       document.body.appendChild(frame);
 
       const form = document.createElement('form');
-      form.method = 'POST'; form.action = this.endpoint; form.target = frameName; form.acceptCharset = 'UTF-8'; form.style.display = 'none';
+      form.method = 'POST';
+      form.action = this.endpoint;
+      form.target = frameName;
+      form.acceptCharset = 'UTF-8';
+      form.style.display = 'none';
       const input = document.createElement('input');
-      input.type = 'hidden'; input.name = 'rpc';
+      input.type = 'hidden';
+      input.name = 'rpc';
       input.value = JSON.stringify({ type:'ANTAROBAT_RPC_REQUEST', id, nonce:this.nonce, method, args, mutationId, origin:location.origin });
-      form.appendChild(input); document.body.appendChild(form);
+      form.appendChild(input);
+      document.body.appendChild(form);
 
       const cleanup = () => { try { form.remove(); } catch (_) {} try { frame.remove(); } catch (_) {} };
       const timer = setTimeout(() => {
-        this.pending.delete(id); cleanup(); this.onRequestState({ active:false, method });
-        reject(makeError(`Server belum merespons setelah ${this.timeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan klik berulang; gunakan tombol yang sama setelah koneksi stabil.`, 'REQUEST_TIMEOUT'));
+        this.pending.delete(id);
+        cleanup();
+        this.onRequestState({ active:false, method });
+        reject(apiError(`Server belum merespons setelah ${this.timeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`, 'REQUEST_TIMEOUT'));
       }, this.timeoutMs);
 
       this.pending.set(id, { resolve, reject, timer, cleanup, method });
       try {
         form.submit();
         setTimeout(() => { try { form.remove(); } catch (_) {} }, 0);
-      } catch (e) {
-        clearTimeout(timer); this.pending.delete(id); cleanup(); this.onRequestState({ active:false, method });
-        reject(makeError(e?.message || 'Gagal mengirim permintaan ke server.', 'REQUEST_SUBMIT_FAILED'));
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        cleanup();
+        this.onRequestState({ active:false, method });
+        reject(apiError(error?.message || 'Gagal mengirim permintaan ke server.', 'REQUEST_SUBMIT_FAILED'));
       }
     });
   }
@@ -142,9 +158,9 @@ export class PengantaranApi {
     let attempt = 0;
     while (true) {
       try { return await this.transport.call(method, ...args); }
-      catch (err) {
-        const retryable = ['REQUEST_TIMEOUT','REQUEST_SUBMIT_FAILED'].includes(String(err?.code || ''));
-        if (!retryable || attempt >= this.readRetryCount || !navigator.onLine) throw err;
+      catch (error) {
+        const retryable = ['REQUEST_TIMEOUT','REQUEST_SUBMIT_FAILED'].includes(String(error?.code || ''));
+        if (!retryable || attempt >= this.readRetryCount || !navigator.onLine) throw error;
         attempt += 1;
         await wait(this.readRetryDelayMs * attempt);
       }
@@ -157,7 +173,7 @@ export class PengantaranApi {
     if (old && old.expiresAt > now) return old.id;
     const id = crypto.randomUUID ? crypto.randomUUID() : `${now}-${Math.random()}`;
     this.recentMutationIds.set(key, { id, expiresAt: now + this.mutationReplayWindowMs });
-    for (const [k,v] of this.recentMutationIds) if (v.expiresAt <= now) this.recentMutationIds.delete(k);
+    for (const [itemKey,value] of this.recentMutationIds) if (value.expiresAt <= now) this.recentMutationIds.delete(itemKey);
     return id;
   }
 
@@ -169,67 +185,63 @@ export class PengantaranApi {
       let busyAttempts = 0;
       while (true) {
         try { return await this.transport.callMutation(method, mutationId, ...args); }
-        catch (err) {
-          if (String(err?.code || '') !== 'REQUEST_IN_PROGRESS' || busyAttempts >= this.mutationBusyRetryCount) throw err;
+        catch (error) {
+          if (String(error?.code || '') !== 'REQUEST_IN_PROGRESS' || busyAttempts >= this.mutationBusyRetryCount) throw error;
           busyAttempts += 1;
           await wait(this.mutationBusyRetryDelayMs * busyAttempts);
         }
       }
     };
-    const p = run().finally(() => this.mutations.delete(key));
-    this.mutations.set(key, p);
-    return p;
+    const promise = run().finally(() => this.mutations.delete(key));
+    this.mutations.set(key, promise);
+    return promise;
   }
 
-  ping() { return this._read('stage2Ping'); }
-  login(pin, clientInfo) { return this._mutate('stage1Login', String(pin || ''), clientInfo || {}); }
-  session(token) { return this._read('stage1Session', String(token || '')); }
-  logout(token) { return this._mutate('stage1Logout', String(token || '')); }
+  ping() { return this._read('system.ping'); }
+  login(pin, clientInfo) { return this._mutate('auth.login', String(pin || ''), clientInfo || {}); }
+  session(token) { return this._read('auth.session', String(token || '')); }
+  logout(token) { return this._mutate('auth.logout', String(token || '')); }
 
-  farmasiBootstrap(token) { return this._read('stage2FarmasiBootstrap', String(token || '')); }
-  farmasiRows(token, searchText = '') { return this._read('stage2FarmasiRows', String(token || ''), String(searchText || '')); }
-  pendingReceiptVerifications(token) { return this._read('stage2PendingReceiptVerifications', String(token || '')); }
-  failedDeliveryFollowUps(token) { return this._read('stage6B1FailedFollowUps', String(token || '')); }
-  confirmReturnedToFarmasi(token, id) { return this._mutate('stage6B1ConfirmReturn', String(token || ''), String(id || '')); }
-  failedFollowupWa(token, id) { return this._mutate('stage6B1FollowupWa', String(token || ''), String(id || '')); }
-  planRedelivery(token, id, payload) { return this._mutate('stage6B1PlanRedelivery', String(token || ''), String(id || ''), payload || {}); }
-  rescheduleDelivery(token, id, payload) { return this._mutate('stage6B1Reschedule', String(token || ''), String(id || ''), payload || {}); }
-  markSelfPickup(token, id, note = '') { return this._mutate('stage6B1MarkSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
-  confirmSelfPickup(token, id, note = '') { return this._mutate('stage6B1ConfirmSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
-  closeFailedDelivery(token, id, note) { return this._mutate('stage6B1CloseService', String(token || ''), String(id || ''), String(note || '')); }
-  resumeDelivery(token, id) { return this._mutate('stage6B1ResumeDelivery', String(token || ''), String(id || '')); }
-  attemptHistory(token, id) { return this._read('stage6B1AttemptHistory', String(token || ''), String(id || '')); }
-  refreshFarmasiMaster(token) { return this._read('stage2RefreshFarmasiMaster', String(token || '')); }
-  createDelivery(token, payload) { return this._mutate('stage2CreateDelivery', String(token || ''), payload || {}); }
-  updateFarmasiRecord(token, id, payload) { return this._mutate('stage2UpdateFarmasiRecord', String(token || ''), String(id || ''), payload || {}); }
-  markReady(token, id) { return this._mutate('stage2MarkReady', String(token || ''), String(id || '')); }
-  registrationWa(token, id) { return this._read('stage2RegistrationWa', String(token || ''), String(id || '')); }
-  manualReceiptWa(token, id) { return this._read('stage2ManualReceiptWa', String(token || ''), String(id || '')); }
-  manualVerifyReceipt(token, id, method, note) { return this._mutate('stage2ManualVerifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || '')); }
+  farmasiBootstrap(token) { return this._read('pharmacy.bootstrap', String(token || '')); }
+  farmasiRows(token, searchText = '') { return this._read('pharmacy.today', String(token || ''), String(searchText || '')); }
+  pendingReceiptVerifications(token) { return this._read('pharmacy.receiptQueue', String(token || '')); }
+  failedDeliveryFollowUps(token) { return this._read('pharmacy.followUps', String(token || '')); }
+  confirmReturnedToFarmasi(token, id) { return this._mutate('pharmacy.confirmReturn', String(token || ''), String(id || '')); }
+  failedFollowupWa(token, id) { return this._mutate('pharmacy.followUpWhatsApp', String(token || ''), String(id || '')); }
+  planRedelivery(token, id, payload) { return this._mutate('pharmacy.planRedelivery', String(token || ''), String(id || ''), payload || {}); }
+  rescheduleDelivery(token, id, payload) { return this._mutate('pharmacy.createRedelivery', String(token || ''), String(id || ''), payload || {}); }
+  markSelfPickup(token, id, note = '') { return this._mutate('pharmacy.markSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
+  confirmSelfPickup(token, id, note = '') { return this._mutate('pharmacy.confirmSelfPickup', String(token || ''), String(id || ''), String(note || '')); }
+  closeFailedDelivery(token, id, note) { return this._mutate('pharmacy.closeCase', String(token || ''), String(id || ''), String(note || '')); }
+  refreshFarmasiMaster(token) { return this._read('pharmacy.refreshMaster', String(token || '')); }
+  createDelivery(token, payload) { return this._mutate('pharmacy.createDelivery', String(token || ''), payload || {}); }
+  updateFarmasiRecord(token, id, payload) { return this._mutate('pharmacy.updateDelivery', String(token || ''), String(id || ''), payload || {}); }
+  markReady(token, id) { return this._mutate('pharmacy.markReady', String(token || ''), String(id || '')); }
+  registrationWa(token, id) { return this._read('pharmacy.registrationWhatsApp', String(token || ''), String(id || '')); }
+  manualReceiptWa(token, id) { return this._read('pharmacy.receiptWhatsApp', String(token || ''), String(id || '')); }
+  manualVerifyReceipt(token, id, method, note) { return this._mutate('pharmacy.verifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || '')); }
+  activeIncidents(token) { return this._read('pharmacy.activeIncidents', String(token || '')); }
 
-  courierBootstrap(token) { return this._read('stage3CourierBootstrap', String(token || '')); }
-  courierRows(token) { return this._read('stage3CourierRows', String(token || '')); }
-  courierHistory(token, limit = 50) { return this._read('stage3CourierHistory', String(token || ''), Number(limit || 50)); }
-  claimTask(token, id) { return this._mutate('stage3ClaimTask', String(token || ''), String(id || '')); }
-  completeVerified(token, id, payload) { return this._mutate('stage3CompleteVerified', String(token || ''), String(id || ''), payload || {}); }
-  pendingTask(token, id, payload) { return this._mutate('stage6B1PendingTask', String(token || ''), String(id || ''), payload || {}); }
-  failTask(token, id, payload) { return this._mutate('stage3FailTask', String(token || ''), String(id || ''), payload || {}); }
-  reportIncident(token, payload) { return this._mutate('stage3ReportIncident', String(token || ''), payload || {}); }
-  resolveIncident(token, incidentId, note) { return this._mutate('stage3ResolveIncident', String(token || ''), String(incidentId || ''), String(note || '')); }
+  courierBootstrap(token) { return this._read('courier.bootstrap', String(token || '')); }
+  courierRows(token) { return this._read('courier.queue', String(token || '')); }
+  courierHistory(token, limit = 50) { return this._read('courier.history', String(token || ''), Number(limit || 50)); }
+  claimTask(token, id) { return this._mutate('courier.claim', String(token || ''), String(id || '')); }
+  completeVerified(token, id, payload) { return this._mutate('courier.complete', String(token || ''), String(id || ''), payload || {}); }
+  pendingTask(token, id, payload) { return this._mutate('courier.pending', String(token || ''), String(id || ''), payload || {}); }
+  resumeDelivery(token, id) { return this._mutate('courier.resume', String(token || ''), String(id || '')); }
+  failTask(token, id, payload) { return this._mutate('courier.fail', String(token || ''), String(id || ''), payload || {}); }
+  reportIncident(token, payload) { return this._mutate('courier.reportIncident', String(token || ''), payload || {}); }
+  resolveIncident(token, incidentId, note) { return this._mutate('courier.resolveIncident', String(token || ''), String(incidentId || ''), String(note || '')); }
 
-  adminBootstrap(token) { return this._read('stage4AdminBootstrap', String(token || '')); }
-  adminRows(token, search = '') { return this._read('stage4AdminRows', String(token || ''), String(search || '')); }
-  adminUpdateStatus(token, id, status, note = '') { return this._mutate('stage4AdminUpdateStatus', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
-  adminPendingVerifications(token) { return this._read('stage4PendingReceiptVerifications', String(token || '')); }
-  adminManualReceiptWa(token, id) { return this._read('stage4ManualReceiptWa', String(token || ''), String(id || '')); }
-  adminManualVerifyReceipt(token, id, method, note) { return this._mutate('stage4ManualVerifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || '')); }
-  adminIncidents(token) { return this._read('stage4Incidents', String(token || '')); }
-  adminVerifyIncident(token, id, status, note) { return this._mutate('stage4VerifyIncident', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
-  adminArchiveHealth(token) { return this._read('stage4ArchiveHealth', String(token || '')); }
-  adminRefreshMaster(token) { return this._read('stage4RefreshMaster', String(token || '')); }
-  adminAuditRows(token, limit = 100) { return this._read('stage4AuditRows', String(token || ''), Number(limit || 100)); }
+  adminBootstrap(token) { return this._read('admin.bootstrap', String(token || '')); }
+  adminRows(token, search = '') { return this._read('admin.search', String(token || ''), String(search || '')); }
+  adminUpdateStatus(token, id, status, note = '') { return this._mutate('admin.correctStatus', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
+  adminArchiveHealth(token) { return this._read('admin.archiveHealth', String(token || '')); }
+  adminRefreshMaster(token) { return this._read('admin.refreshMaster', String(token || '')); }
+  adminAuditRows(token, limit = 100) { return this._read('admin.audit', String(token || ''), Number(limit || 100)); }
+  deliveryHistory(token, id) { return this._read('admin.deliveryHistory', String(token || ''), String(id || '')); }
 
   managementData(token, startDate, endDate, basis = 'DAFTAR') {
-    return this._read('stage5ManagementData', String(token || ''), String(startDate || ''), String(endDate || ''), String(basis || 'DAFTAR'));
+    return this._read('management.dashboard', String(token || ''), String(startDate || ''), String(endDate || ''), String(basis || 'DAFTAR'));
   }
 }

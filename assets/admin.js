@@ -1,47 +1,203 @@
-export function createAdminModule(ctx){
-  const state={loaded:false,summary:null,rows:[],pending:[],incidents:[],archive:null,master:null,audit:[],search:''};
-  const esc=ctx.escapeHtml, api=()=>ctx.getApi(), token=()=>ctx.getToken(), page=()=>document.getElementById('pageContent');
-  const statusOptions=['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
-  const verifyMethods=['TELEPON','WHATSAPP','KONFIRMASI LANGSUNG','LAINNYA'];
+export function createAdminModule(ctx) {
+  const state = {loaded:false,summary:{},archive:null,master:{},audit:[],metadata:null,rows:[],search:''};
+  const esc = ctx.escapeHtml;
+  const api = () => ctx.getApi();
+  const token = () => ctx.getToken();
+  const page = () => document.getElementById('pageContent');
+  const statusOptions = ['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
 
-  async function openAttemptHistory(id){
-    try{const res=await api().attemptHistory(token(),id);const rows=res.data?.rows||[];ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">RIWAYAT ATTEMPT</div><h3>Riwayat Pengantaran</h3><p>${esc(id)}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="attempt-timeline">${rows.length?rows.map(a=>`<article><span class="attempt-no">${Number(a.attemptNo)}</span><div><div><span class="status-badge ${a.result==='TERKIRIM'?'delivered':a.result==='GAGAL ANTAR'?'failed':'warning'}">${esc(a.result||a.status||'-')}</span>${a.resolution?` <span class="status-badge neutral">${esc(a.resolution)}</span>`:''}</div><h4>Attempt ${Number(a.attemptNo)}${a.courier?` • ${esc(a.courier)}`:''}</h4><p>${esc(a.claimedAt||a.readyAt||'-')} → ${esc(a.completedAt||'Belum selesai')}</p>${a.failureReason?`<small>Gagal: ${esc(a.failureReason)} • ${esc(a.failureFollowUp||'')}</small>`:''}${a.returnStatus?`<small>Obat kembali: ${esc(a.returnStatus)}</small>`:''}</div></article>`).join(''):'<div class="empty-state"><p>Belum ada ledger attempt untuk kasus ini.</p></div>'}</div><div class="modal-actions"><button class="primary-btn" data-modal-close>Tutup</button></div>`,{wide:true});}catch(e){ctx.showToast(e.message,'error')}
+  function resetForLogout() {
+    Object.assign(state,{loaded:false,summary:{},archive:null,master:{},audit:[],metadata:null,rows:[],search:''});
   }
 
-  function resetForLogout(){Object.assign(state,{loaded:false,summary:null,rows:[],pending:[],incidents:[],archive:null,master:null,audit:[],search:''});}
-  function badge(t,cls='neutral'){return `<span class="status-pill ${cls}">${esc(t||'-')}</span>`;}
-  function statusClass(s){return s==='TERKIRIM'?'success':s==='GAGAL ANTAR'?'danger':s==='DALAM PERJALANAN'?'warning':s==='SIAP DIANTAR'?'info':'neutral';}
-  function fmt(v){return esc(v||'-');}
-  async function bootstrap(force=false){if(state.loaded&&!force)return state;const r=await api().adminBootstrap(token());const d=r.data||{};state.summary=d.summary||{};state.pending=d.pending||[];state.incidents=d.incidents||[];state.archive=d.archive||null;state.master=d.master||{};state.audit=d.audit||[];state.loaded=true;return state;}
+  function fmt(value) { return esc(value || '-'); }
+  function packageCode(record) { return record?.['Kode Paket'] || record?.__packageCode || record?.['ID Sistem'] || '-'; }
+  function statusClass(status) {
+    if (status === 'TERKIRIM') return 'delivered';
+    if (status === 'GAGAL ANTAR') return 'failed';
+    if (status === 'DALAM PERJALANAN') return 'transit';
+    if (status === 'SIAP DIANTAR') return 'ready';
+    if (status === 'MENUNGGU DIPROSES') return 'waiting';
+    return 'neutral';
+  }
+  function badge(text,kind='neutral') { return `<span class="status-badge ${kind}">${esc(text || '-')}</span>`; }
+  function metric(label,value,note='') { return `<div class="card metric-card"><div class="metric-top"><span>${esc(label)}</span></div><div class="metric-value">${esc(value)}</div>${note?`<div class="metric-note">${esc(note)}</div>`:''}</div>`; }
+  function countArray(value) { return Array.isArray(value) ? value.length : 0; }
 
-  async function renderHome(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">ADMIN SISTEM</div><h1>Pusat Kontrol Operasional</h1><p>Koreksi operasional, verifikasi penerimaan, kendala kurir, arsip, master data, dan audit dalam satu tempat.</p></div><div class="hero-actions"><button id="adminHomeRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="adminHomeBody"><div class="inline-loading">Memuat ringkasan…</div></section>`;document.getElementById('adminHomeRefresh')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;state.loaded=false;try{await bootstrap(true);drawHome();ctx.showToast('Ringkasan Admin diperbarui.','success')}catch(x){ctx.showToast(x.message,'error')}finally{e.currentTarget.disabled=false}});try{await bootstrap();drawHome()}catch(e){document.getElementById('adminHomeBody').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
-  function drawHome(){const b=document.getElementById('adminHomeBody');if(!b)return;const s=state.summary||{},a=state.archive||{};b.innerHTML=`<div class="kpi-grid"><div class="kpi-card"><span>Pengantaran aktif</span><strong>${Number(s.active||0)}</strong><small>Menunggu + siap + perjalanan</small></div><div class="kpi-card"><span>Verifikasi manual</span><strong>${Number(state.pending.length||0)}</strong><small>Perlu konfirmasi Farmasi/Admin</small></div><div class="kpi-card"><span>Kendala aktif</span><strong>${Number(s.activeIncidents||0)}</strong><small>Kurir sedang terkendala</small></div><div class="kpi-card"><span>Antrean arsip</span><strong>${Number(a.queue?.waiting||0)}</strong><small>${Number(a.queue?.failed||0)} gagal</small></div></div><div class="admin-action-grid"><button data-go="operations" class="admin-action-card"><b>▤ Operasional</b><span>Cari dan koreksi data terbaru</span></button><button data-go="verification" class="admin-action-card"><b>✓ Verifikasi</b><span>${state.pending.length} menunggu pemeriksaan</span></button><button data-go="incidents" class="admin-action-card"><b>⚠ Kendala</b><span>${Number(s.activeIncidents||0)} kendala aktif</span></button><button data-go="archive" class="admin-action-card"><b>▣ Arsip</b><span>Retensi ${Number(a.config?.retentionDays||120)} hari</span></button></div>`;b.querySelectorAll('[data-go]').forEach(x=>x.addEventListener('click',()=>ctx.navigate(x.dataset.go)));}
+  async function bootstrap(force=false) {
+    if (state.loaded && !force) return state;
+    const response = await api().adminBootstrap(token());
+    const data = response.data || {};
+    state.summary = data.summary || {};
+    state.archive = data.archive || null;
+    state.master = data.master || {};
+    state.audit = data.audit || [];
+    state.metadata = data.metadata || null;
+    state.loaded = true;
+    return state;
+  }
 
-  async function renderOperations(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">OPERASIONAL</div><h1>Data Pengantaran</h1><p>Pencarian dan koreksi status hanya untuk kebutuhan administratif yang benar-benar diperlukan.</p></div></section><section class="section"><div class="content-card"><div class="toolbar-row"><input id="adminSearch" class="search-input" placeholder="Cari No. RM, nama, wilayah, kurir, atau status…"><button id="adminSearchBtn" class="secondary-btn">Cari</button></div><div id="adminRowsBox" class="table-scroll"><div class="inline-loading">Memuat data…</div></div></div></section>`;document.getElementById('adminSearchBtn').onclick=()=>loadRows();document.getElementById('adminSearch').addEventListener('keydown',e=>{if(e.key==='Enter')loadRows()});await loadRows();}
-  async function loadRows(){const q=document.getElementById('adminSearch')?.value||'';try{const r=await api().adminRows(token(),q);state.rows=r.data?.rows||[];drawRows()}catch(e){document.getElementById('adminRowsBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
-  function drawRows(){const box=document.getElementById('adminRowsBox');if(!box)return;if(!state.rows.length){box.innerHTML='<div class="empty-state"><h3>Tidak ada data</h3><p>Ubah kata pencarian atau segarkan data.</p></div>';return}box.innerHTML=`<table class="data-table"><thead><tr><th>Tanggal</th><th>Pasien</th><th>Wilayah</th><th>Status</th><th>Kurir</th><th>Aksi</th></tr></thead><tbody>${state.rows.map(r=>`<tr><td>${fmt(r['Tanggal Daftar'])}<br><small>${fmt(r['Jam Daftar'])}</small></td><td><b>${fmt(r['Nama Pasien'])}</b><br><small>RM ${fmt(r['No RM'])}</small></td><td>${fmt(r['Kelurahan'])}<br><small>${fmt(r['Kecamatan'])}</small></td><td>${badge(r['Status'],statusClass(r['Status']))}</td><td>${fmt(r['Kurir'])}</td><td><div class="row-actions"><button class="mini-btn" data-history="${esc(r['ID Sistem'])}">Riwayat Attempt</button><button class="mini-btn" data-correct="${esc(r['ID Sistem'])}">Koreksi</button></div></td></tr>`).join('')}</tbody></table>`;box.querySelectorAll('[data-correct]').forEach(b=>b.onclick=()=>openCorrection(b.dataset.correct));box.querySelectorAll('[data-history]').forEach(b=>b.onclick=()=>openAttemptHistory(b.dataset.history));}
-  function openCorrection(id){const r=state.rows.find(x=>x['ID Sistem']===id);if(!r)return;ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">KOREKSI ADMIN</div><h3>${fmt(r['Nama Pasien'])}</h3><p>${fmt(r['ID Sistem'])}</p></div><button class="modal-x" data-modal-close>×</button></div><div class="notice-box warning">Koreksi status tercatat di audit. Gunakan hanya bila alur operasional memang perlu diperbaiki.</div><label><span>Status baru</span><select id="adminNewStatus">${statusOptions.map(s=>`<option ${s===r['Status']?'selected':''}>${s}</option>`).join('')}</select></label><label><span>Catatan koreksi *</span><textarea id="adminCorrectionNote" placeholder="Alasan koreksi"></textarea></label><div id="adminCorrectionMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="adminCorrectionSave" class="primary-btn">Simpan Koreksi</button></div>`);document.getElementById('adminCorrectionSave').onclick=async()=>{const st=document.getElementById('adminNewStatus').value,n=document.getElementById('adminCorrectionNote').value.trim();if(!n){document.getElementById('adminCorrectionMsg').innerHTML='<div class="alert error">Catatan koreksi wajib diisi.</div>';return}try{await api().adminUpdateStatus(token(),id,st,n);ctx.closeModal();ctx.showToast('Koreksi status disimpan.','success');await loadRows()}catch(e){document.getElementById('adminCorrectionMsg').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}};}
+  async function renderHome() {
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ADMIN DATA</div><h1>Pusat Pemeliharaan Data</h1><p>Koreksi data, arsip, master, dan audit dalam satu tempat.</p></div><div class="hero-actions"><button id="adminHomeRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="adminHomeBody"><div class="inline-loading">Memuat…</div></section>`;
+    document.getElementById('adminHomeRefresh')?.addEventListener('click',async event => {
+      event.currentTarget.disabled = true;
+      try { await bootstrap(true); drawHome(); ctx.showToast('Data Admin diperbarui.','success'); }
+      catch (error) { ctx.showToast(error.message,'error'); }
+      finally { event.currentTarget.disabled = false; }
+    });
+    try { await bootstrap(); drawHome(); }
+    catch (error) { document.getElementById('adminHomeBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+  }
 
-  async function renderVerification(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">VERIFIKASI PENERIMAAN</div><h1>Antrean Verifikasi Manual</h1><p>Penyerahan tanpa kode harus dikonfirmasi oleh Farmasi atau Admin sebelum dianggap terverifikasi.</p></div><div class="hero-actions"><button id="verRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="verBox"><div class="inline-loading">Memuat antrean…</div></section>`;document.getElementById('verRefresh').onclick=()=>loadVerification();await loadVerification();}
-  async function loadVerification(){try{const r=await api().adminPendingVerifications(token());state.pending=r.data?.rows||[];drawVerification()}catch(e){document.getElementById('verBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
-  function drawVerification(){const box=document.getElementById('verBox');if(!state.pending.length){box.innerHTML='<div class="content-card empty-state"><div>✓</div><h3>Tidak ada antrean</h3><p>Semua penerimaan yang memerlukan verifikasi manual sudah ditindaklanjuti.</p></div>';return}box.innerHTML=`<div class="card-list">${state.pending.map(r=>`<article class="work-card"><div><div>${badge('MENUNGGU VERIFIKASI','warning')}</div><h3>${fmt(r['Nama Pasien'])}</h3><p>RM ${fmt(r['No RM'])} • ${fmt(r['Kelurahan'])}</p><small>Kurir: ${fmt(r['Kurir'])} • Terkirim ${fmt(r['Waktu Terkirim'])}</small></div><div class="row-actions"><button data-wa="${esc(r['ID Sistem'])}" class="wa-btn">WA Konfirmasi</button><button data-v="${esc(r['ID Sistem'])}" class="primary-btn">Verifikasi</button></div></article>`).join('')}</div>`;box.querySelectorAll('[data-wa]').forEach(b=>b.onclick=()=>sendVerificationWa(b.dataset.wa));box.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>openVerifyReceipt(b.dataset.v));}
-  async function sendVerificationWa(id){try{const r=await api().adminManualReceiptWa(token(),id);const u=r.data?.waAction?.url;if(u)window.open(u,'_blank','noopener');else ctx.showToast('Nomor WhatsApp tidak tersedia.','warning')}catch(e){ctx.showToast(e.message,'error')}}
-  function openVerifyReceipt(id){const r=state.pending.find(x=>x['ID Sistem']===id);if(!r)return;ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">VERIFIKASI MANUAL</div><h3>${fmt(r['Nama Pasien'])}</h3></div><button class="modal-x" data-modal-close>×</button></div><label><span>Metode *</span><select id="vrMethod"><option value="">Pilih metode</option>${verifyMethods.map(x=>`<option>${x}</option>`).join('')}</select></label><label><span>Catatan hasil verifikasi *</span><textarea id="vrNote" placeholder="Contoh: Pasien membalas WA bahwa obat sudah diterima dengan baik."></textarea></label><div id="vrMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="vrSave" class="primary-btn">Simpan Verifikasi</button></div>`);document.getElementById('vrSave').onclick=async()=>{const m=document.getElementById('vrMethod').value,n=document.getElementById('vrNote').value.trim();if(!m||!n){document.getElementById('vrMsg').innerHTML='<div class="alert error">Metode dan catatan wajib diisi.</div>';return}try{await api().adminManualVerifyReceipt(token(),id,m,n);ctx.closeModal();ctx.showToast('Penerimaan berhasil diverifikasi.','success');await loadVerification()}catch(e){document.getElementById('vrMsg').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}};}
+  function drawHome() {
+    const root = document.getElementById('adminHomeBody');
+    if (!root) return;
+    const s = state.summary || {};
+    const missing = Number(s.missingMetadata || 0);
+    root.innerHTML = `<div class="grid grid-4">${metric('Data Aktif',Number(s.activeRecords||0),'Masih dalam proses')}${metric('Metadata',Number(s.metadataRecords||0),missing?`${missing} perlu perhatian`:'Sinkron')}${metric('Riwayat Pengantaran',Number(s.deliveryHistoryRecords||0),'Catatan perjalanan pengiriman')}${metric('Audit',Number(s.auditRecords||0),'Aktivitas tercatat')}</div>
+      ${missing?`<div class="system-alert warning"><strong>Metadata perlu perhatian</strong><span>${missing} data belum lengkap. Jalankan pemeriksaan metadata sebelum melakukan perubahan besar.</span></div>`:''}
+      <div class="admin-action-grid clean-admin-actions">
+        <button data-go="corrections" class="admin-action-card"><b>✎ Koreksi Data</b><span>Cari data dan perbaiki status bila terjadi salah input.</span></button>
+        <button data-go="archive" class="admin-action-card"><b>▣ Arsip</b><span>Periksa kesehatan arsip dan antrean pemeliharaan.</span></button>
+        <button data-go="master" class="admin-action-card"><b>◆ Master</b><span>Lihat ringkasan konfigurasi aktif.</span></button>
+        <button data-go="audit" class="admin-action-card"><b>≡ Audit</b><span>Telusuri jejak perubahan dan aktivitas.</span></button>
+      </div>`;
+    root.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click',() => ctx.navigate(button.dataset.go)));
+  }
 
-  async function renderIncidents(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">KENDALA KURIR</div><h1>Monitoring Kendala</h1><p>Admin memeriksa kendala yang dilaporkan kurir dan mengesahkan hasil verifikasinya.</p></div><div class="hero-actions"><button id="incRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="incBox"><div class="inline-loading">Memuat kendala…</div></section>`;document.getElementById('incRefresh').onclick=()=>loadIncidents();await loadIncidents();}
-  async function loadIncidents(){try{const r=await api().adminIncidents(token());state.incidents=r.data?.rows||[];drawIncidents()}catch(e){document.getElementById('incBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
-  function drawIncidents(){const box=document.getElementById('incBox');if(!state.incidents.length){box.innerHTML='<div class="content-card empty-state"><h3>Belum ada kendala</h3><p>Laporan kendala kurir akan muncul di sini.</p></div>';return}box.innerHTML=`<div class="card-list">${state.incidents.map(i=>`<article class="work-card"><div><div>${badge(i.status,i.status==='AKTIF'?'danger':'success')} ${badge(i.verificationStatus||'BELUM DIVERIFIKASI',i.verificationStatus==='TERVERIFIKASI'?'success':i.verificationStatus==='TIDAK TERVERIFIKASI'?'danger':'warning')}</div><h3>${fmt(i.type)}</h3><p>${fmt(i.courier)} • ${fmt(i.startedAt)} • ${Number(i.affectedCount||0)} paket</p><small>${fmt(i.detail)}</small></div><div class="row-actions">${i.status!=='AKTIF'&&i.verificationStatus==='MENUNGGU VERIFIKASI'?`<button data-inc="${esc(i.id)}" class="primary-btn">Verifikasi</button>`:''}</div></article>`).join('')}</div>`;box.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>openIncidentVerify(b.dataset.inc));}
-  function openIncidentVerify(id){const i=state.incidents.find(x=>x.id===id);if(!i)return;ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">VERIFIKASI KENDALA</div><h3>${fmt(i.type)}</h3><p>${fmt(i.courier)}</p></div><button class="modal-x" data-modal-close>×</button></div><label><span>Keputusan *</span><select id="ivStatus"><option value="TERVERIFIKASI">TERVERIFIKASI</option><option value="TIDAK TERVERIFIKASI">TIDAK TERVERIFIKASI</option></select></label><label><span>Catatan *</span><textarea id="ivNote"></textarea></label><div id="ivMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="ivSave" class="primary-btn">Simpan</button></div>`);document.getElementById('ivSave').onclick=async()=>{const st=document.getElementById('ivStatus').value,n=document.getElementById('ivNote').value.trim();if(!n){document.getElementById('ivMsg').innerHTML='<div class="alert error">Catatan wajib diisi.</div>';return}try{await api().adminVerifyIncident(token(),id,st,n);ctx.closeModal();ctx.showToast('Verifikasi kendala disimpan.','success');await loadIncidents()}catch(e){document.getElementById('ivMsg').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}};}
+  async function renderCorrections() {
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">KOREKSI DATA</div><h1>Temukan Data yang Perlu Diperbaiki</h1><p>Gunakan Kode Paket, No. RM, nama pasien, ID Sistem, status, atau nama Kurir.</p></div></section>
+      <section class="section"><div class="toolbar-card"><div class="search-box"><span>⌕</span><input id="adminSearch" placeholder="Contoh: A00025, No. RM, nama pasien…" value="${esc(state.search)}"></div><button id="adminSearchBtn" class="secondary-btn">Cari</button></div><div id="adminRowsBox" class="content-card"><div class="inline-loading">Memuat data…</div></div></section>`;
+    document.getElementById('adminSearchBtn')?.addEventListener('click',loadRows);
+    document.getElementById('adminSearch')?.addEventListener('keydown',event => { if (event.key === 'Enter') loadRows(); });
+    await loadRows();
+  }
 
-  async function renderArchive(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">ARSIP</div><h1>Kesehatan Arsip Tahunan</h1><p>Monitoring retensi aktif 120 hari, antrean arsip, kegagalan sinkronisasi, dan gudang tahunan.</p></div><div class="hero-actions"><button id="arRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="arBox"><div class="inline-loading">Memuat kesehatan arsip…</div></section>`;document.getElementById('arRefresh').onclick=()=>loadArchive();await loadArchive();}
-  async function loadArchive(){try{const r=await api().adminArchiveHealth(token());state.archive=r.data?.health||r.data||{};drawArchive()}catch(e){document.getElementById('arBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
-  function drawArchive(){const a=state.archive||{},c=a.config||{},q=a.queue||{};document.getElementById('arBox').innerHTML=`<div class="kpi-grid"><div class="kpi-card"><span>Retensi aktif</span><strong>${Number(c.retentionDays||120)} hari</strong><small>Data lengkap operasional</small></div><div class="kpi-card"><span>Antrean menunggu</span><strong>${Number(q.waiting||0)}</strong><small>Tertua ${Number(q.oldestMinutes||0)} menit</small></div><div class="kpi-card"><span>Antrean gagal</span><strong>${Number(q.failed||0)}</strong><small>${fmt(q.lastError)}</small></div><div class="kpi-card"><span>Cleanup</span><strong>${c.cleanupEnabled?'AKTIF':'NONAKTIF'}</strong><small>Batch ${Number(c.cleanupBatch||300)}</small></div></div><div class="content-card table-scroll"><table class="data-table"><thead><tr><th>Tahun</th><th>Status</th><th>Pengantaran</th><th>Kendala</th><th>Audit</th><th>Sinkron</th></tr></thead><tbody>${(a.registry||[]).map(r=>`<tr><td><b>${Number(r.year)}</b></td><td>${badge(r.status||'-',r.status==='SIAP'?'success':'warning')}</td><td>${Number(r.deliveries||0)}</td><td>${Number(r.incidents||0)}</td><td>${Number(r.audits||0)}</td><td>${fmt(r.lastSync)}</td></tr>`).join('')}</tbody></table></div>`;}
+  async function loadRows() {
+    state.search = document.getElementById('adminSearch')?.value || state.search || '';
+    const box = document.getElementById('adminRowsBox');
+    if (box) box.innerHTML = '<div class="inline-loading">Memuat data…</div>';
+    try {
+      const response = await api().adminRows(token(),state.search);
+      state.rows = response.data?.rows || [];
+      drawRows();
+    } catch (error) {
+      if (box) box.innerHTML = `<div class="alert error">${esc(error.message)}</div>`;
+    }
+  }
 
-  async function renderMaster(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">MASTER DATA</div><h1>Referensi Sistem</h1><p>Ringkasan master yang sedang dipakai aplikasi. Perubahan tetap dilakukan melalui Spreadsheet resmi selama fase Apps Script.</p></div><div class="hero-actions"><button id="masterRefresh" class="secondary-btn">↻ Muat Ulang</button></div></section><section class="section" id="masterBox"><div class="inline-loading">Memuat master…</div></section>`;document.getElementById('masterRefresh').onclick=()=>loadMaster();await loadMaster();}
-  async function loadMaster(){try{const r=await api().adminRefreshMaster(token());state.master=r.data?.master||{};const m=state.master;document.getElementById('masterBox').innerHTML=`<div class="kpi-grid"><div class="kpi-card"><span>Poli</span><strong>${m.clinics?.length||0}</strong></div><div class="kpi-card"><span>Wilayah</span><strong>${m.villages?.length||0}</strong></div><div class="kpi-card"><span>Alasan gagal</span><strong>${m.failureReasons?.length||0}</strong></div><div class="kpi-card"><span>Jenis kendala</span><strong>${m.incidentTypes?.length||0}</strong></div></div><div class="notice-box">Selama fase transisi, perubahan master dilakukan dari Spreadsheet agar sumber konfigurasi tetap satu. PWA hanya membaca master terbaru.</div>`}catch(e){document.getElementById('masterBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
+  function drawRows() {
+    const box = document.getElementById('adminRowsBox');
+    if (!box) return;
+    if (!state.rows.length) {
+      box.innerHTML = '<div class="empty-state"><h3>Data tidak ditemukan</h3><p>Periksa kata pencarian lalu coba kembali.</p></div>';
+      return;
+    }
+    box.innerHTML = `<div class="table-scroll"><table class="data-table responsive-table admin-correction-table"><thead><tr><th>Kode Paket</th><th>Pasien</th><th>Status</th><th>Kurir</th><th>Aksi</th></tr></thead><tbody>${state.rows.map(record => `<tr><td data-label="Kode Paket"><strong class="package-code">${esc(packageCode(record))}</strong><span class="cell-sub">${fmt(record['ID Sistem'])}</span></td><td data-label="Pasien"><strong>${fmt(record['Nama Pasien'])}</strong><span class="cell-sub">RM ${fmt(record['No RM'])} • ${fmt(record['Kelurahan'])}</span></td><td data-label="Status">${badge(record['Status'],statusClass(record['Status']))}</td><td data-label="Kurir">${fmt(record['Kurir'])}</td><td data-label="Aksi"><div class="row-actions"><button class="mini-btn" data-history="${esc(record['ID Sistem'])}">Riwayat</button><button class="mini-btn primary-soft" data-correct="${esc(record['ID Sistem'])}">Koreksi</button></div></td></tr>`).join('')}</tbody></table></div>`;
+    box.querySelectorAll('[data-history]').forEach(button => button.addEventListener('click',() => openHistory(button.dataset.history)));
+    box.querySelectorAll('[data-correct]').forEach(button => button.addEventListener('click',() => openCorrection(button.dataset.correct)));
+  }
 
-  async function renderAudit(){page().innerHTML=`<section class="hero compact"><div><div class="eyebrow">AUDIT</div><h1>Jejak Aktivitas Terbaru</h1><p>Aktivitas sensitif seperti koreksi status, verifikasi, dan perubahan operasional tercatat di sini.</p></div><div class="hero-actions"><button id="auditRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section"><div class="content-card table-scroll" id="auditBox"><div class="inline-loading">Memuat audit…</div></div></section>`;document.getElementById('auditRefresh').onclick=()=>loadAudit();await loadAudit();}
-  async function loadAudit(){try{const r=await api().adminAuditRows(token(),100);state.audit=r.data?.rows||[];document.getElementById('auditBox').innerHTML=state.audit.length?`<table class="data-table"><thead><tr><th>Waktu</th><th>Petugas</th><th>Role</th><th>Aktivitas</th><th>Perubahan</th><th>Catatan</th></tr></thead><tbody>${state.audit.map(x=>`<tr><td>${fmt(x.time)}</td><td>${fmt(x.name)}</td><td>${fmt(x.role)}</td><td><b>${fmt(x.action)}</b></td><td>${fmt(x.oldStatus)} → ${fmt(x.newStatus)}</td><td>${fmt(x.note)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty-state"><h3>Belum ada audit</h3></div>'}catch(e){document.getElementById('auditBox').innerHTML=`<div class="alert error">${esc(e.message)}</div>`}}
+  async function openHistory(id) {
+    try {
+      const response = await api().deliveryHistory(token(),id);
+      const rows = response.data?.rows || [];
+      ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">RIWAYAT PENGANTARAN</div><h3>${esc(state.rows.find(item => item['ID Sistem'] === id)?.['Nama Pasien'] || packageCode(state.rows.find(item => item['ID Sistem'] === id)))}</h3></div><button class="modal-x" data-modal-close>×</button></div><div class="attempt-timeline">${rows.length?rows.map(item => `<article><span class="attempt-no">${Number(item.attemptNo||1)}</span><div><div>${badge(item.result || item.status || '-',item.result==='TERKIRIM'?'delivered':item.result==='GAGAL ANTAR'?'failed':'neutral')}</div><h4>Pengantaran ke-${Number(item.attemptNo||1)}${item.courier?` • ${esc(item.courier)}`:''}</h4><p>${esc(item.claimedAt || item.readyAt || '-')} → ${esc(item.completedAt || 'Belum selesai')}</p>${item.failureReason?`<small>Alasan gagal: ${esc(item.failureReason)}</small>`:''}${item.returnStatus?`<small>Pengembalian obat: ${esc(item.returnStatus)}</small>`:''}</div></article>`).join(''):'<div class="empty-state"><p>Belum ada riwayat pengantaran.</p></div>'}</div><div class="modal-actions"><button class="primary-btn" data-modal-close>Tutup</button></div>`,{wide:true});
+    } catch (error) { ctx.showToast(error.message,'error'); }
+  }
 
-  return {resetForLogout,renderHome,renderOperations,renderVerification,renderIncidents,renderArchive,renderMaster,renderAudit};
+  function openCorrection(id) {
+    const record = state.rows.find(item => item['ID Sistem'] === id);
+    if (!record) return;
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">KOREKSI DATA</div><h3>${fmt(record['Nama Pasien'])}</h3><p>${esc(packageCode(record))}</p></div><button class="modal-x" data-modal-close>×</button></div>
+      <div class="correction-compare"><div><span>Status Saat Ini</span><strong>${esc(record['Status'] || '-')}</strong></div><div class="correction-arrow">→</div><div><span>Status Baru</span><select id="adminNewStatus">${statusOptions.map(status => `<option value="${status}" ${status===record['Status']?'selected':''}>${status}</option>`).join('')}</select></div></div>
+      <div class="field"><label for="adminCorrectionNote">Alasan koreksi <b>*</b></label><textarea id="adminCorrectionNote" rows="3" placeholder="Jelaskan mengapa data perlu dikoreksi"></textarea></div><div id="adminCorrectionMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="adminCorrectionSave" class="primary-btn">Simpan Koreksi</button></div>`);
+    document.getElementById('adminCorrectionSave')?.addEventListener('click',async() => {
+      const status = document.getElementById('adminNewStatus').value;
+      const note = document.getElementById('adminCorrectionNote').value.trim();
+      if (!note) { document.getElementById('adminCorrectionMsg').innerHTML = '<div class="alert error">Alasan koreksi wajib diisi.</div>'; return; }
+      const ok = await ctx.confirmAction({title:'Simpan koreksi?',message:`Status ${record['Status']} akan diubah menjadi ${status}. Perubahan akan tercatat pada Audit.`,confirmLabel:'Simpan Koreksi',tone:'warning'});
+      if (!ok) return;
+      try {
+        await api().adminUpdateStatus(token(),id,status,note);
+        ctx.closeModal();
+        ctx.showToast('Koreksi data berhasil disimpan.','success');
+        await loadRows();
+      } catch (error) { document.getElementById('adminCorrectionMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+    });
+  }
+
+  async function renderArchive() {
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ARSIP</div><h1>Kesehatan Arsip</h1><p>Pantau retensi dan proses pemeliharaan data lama.</p></div><div class="hero-actions"><button id="archiveRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="archiveBody"><div class="inline-loading">Memuat…</div></section>`;
+    const load = async() => {
+      try {
+        const response = await api().adminArchiveHealth(token());
+        state.archive = response.data?.health || null;
+        drawArchive();
+      } catch (error) { document.getElementById('archiveBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+    };
+    document.getElementById('archiveRefresh')?.addEventListener('click',load);
+    await load();
+  }
+
+  function drawArchive() {
+    const root = document.getElementById('archiveBody');
+    if (!root) return;
+    const a = state.archive || {};
+    const queue = a.queue || {};
+    const config = a.config || {};
+    root.innerHTML = `<div class="grid grid-4">${metric('Retensi',`${Number(config.retentionDays||120)} hari`,'Data aktif')}${metric('Menunggu Arsip',Number(queue.waiting||0),'Antrean')}${metric('Gagal Arsip',Number(queue.failed||0),'Perlu perhatian')}${metric('Tahun Arsip',Number(a.registry?.length||a.years?.length||0),'Terdeteksi')}</div><div class="content-card technical-panel"><h3>Informasi Arsip</h3><pre>${esc(JSON.stringify({config:a.config||{},queue:a.queue||{},lastRun:a.lastRun||a.lastArchiveRun||null},null,2))}</pre></div>`;
+  }
+
+  async function renderMaster() {
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">MASTER</div><h1>Ringkasan Master Data</h1><p>Operasional Admin dilakukan dari dashboard. Perubahan pegawai, role, PIN, dan aktif/nonaktif dilakukan pada Master Spreadsheet.</p></div><div class="hero-actions"><button id="masterRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="masterBody"><div class="inline-loading">Memuat…</div></section>`;
+    const load = async() => {
+      try { const response = await api().adminRefreshMaster(token()); state.master = response.data?.master || {}; drawMaster(); }
+      catch (error) { document.getElementById('masterBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+    };
+    document.getElementById('masterRefresh')?.addEventListener('click',load);
+    await load();
+  }
+
+  function drawMaster() {
+    const m = state.master || {};
+    const items = [
+      ['Wilayah',countArray(m.areas)],
+      ['Alasan Gagal/Pending',countArray(m.failureReasons)],
+      ['Jenis Kendala',countArray(m.incidentTypes)],
+      ['Estimasi Keterlambatan',countArray(m.delayEstimates)],
+      ['Metode Verifikasi',countArray(m.manualVerificationMethods)],
+      ['Hubungan Penerima',countArray(m.receiptRelationships)]
+    ];
+    document.getElementById('masterBody').innerHTML = `<div class="grid grid-3">${items.map(([label,value]) => metric(label,value,'Item aktif')).join('')}</div><div class="system-alert info"><strong>Master Spreadsheet adalah sumber konfigurasi inti.</strong><span>Gunakan hanya saat menambah pegawai, mengubah role/PIN, aktif-nonaktif akun, atau perubahan master yang memang diperlukan.</span></div>`;
+  }
+
+  async function renderAudit() {
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">AUDIT</div><h1>Jejak Aktivitas</h1><p>Perubahan data dan aktivitas penting tercatat untuk penelusuran.</p></div><div class="hero-actions"><button id="auditRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section"><div class="toolbar-card audit-toolbar"><div class="search-box"><span>⌕</span><input id="auditSearch" placeholder="Cari Kode/ID, petugas, role, atau aksi…"></div><select id="auditRole"><option value="">Semua Role</option><option>FARMASI</option><option>KURIR</option><option>ADMIN</option><option>MANAJEMEN</option></select></div><div id="auditBody" class="content-card"><div class="inline-loading">Memuat…</div></div></section>`;
+    document.getElementById('auditSearch')?.addEventListener('input',drawAudit);
+    document.getElementById('auditRole')?.addEventListener('change',drawAudit);
+    document.getElementById('auditRefresh')?.addEventListener('click',async() => { await loadAudit(); ctx.showToast('Audit diperbarui.','success'); });
+    await loadAudit();
+  }
+
+  async function loadAudit() {
+    try { const response = await api().adminAuditRows(token(),200); state.audit = response.data?.rows || []; drawAudit(); }
+    catch (error) { document.getElementById('auditBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+  }
+
+  function drawAudit() {
+    const root = document.getElementById('auditBody');
+    if (!root) return;
+    const query = String(document.getElementById('auditSearch')?.value || '').toLowerCase();
+    const role = String(document.getElementById('auditRole')?.value || '').toUpperCase();
+    const rows = state.audit.filter(item => {
+      if (role && String(item.role||'').toUpperCase() !== role) return false;
+      if (!query) return true;
+      return [item.id,item.name,item.role,item.action,item.oldStatus,item.newStatus,item.note].some(value => String(value||'').toLowerCase().includes(query));
+    });
+    if (!rows.length) { root.innerHTML = '<div class="empty-state"><h3>Tidak ada audit sesuai filter</h3></div>'; return; }
+    root.innerHTML = `<div class="table-scroll"><table class="data-table responsive-table"><thead><tr><th>Waktu</th><th>Petugas</th><th>Aksi</th><th>Perubahan</th><th>Catatan</th></tr></thead><tbody>${rows.map(item => `<tr><td data-label="Waktu">${fmt(item.time)}</td><td data-label="Petugas"><strong>${fmt(item.name)}</strong><span class="cell-sub">${fmt(item.role)}</span></td><td data-label="Aksi">${fmt(item.action)}<span class="cell-sub">${fmt(item.id)}</span></td><td data-label="Perubahan">${item.oldStatus||item.newStatus?`${badge(item.oldStatus||'-','neutral')} <span class="audit-arrow">→</span> ${badge(item.newStatus||'-',statusClass(item.newStatus))}`:'-'}</td><td data-label="Catatan">${fmt(item.note)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  return {renderHome,renderCorrections,renderArchive,renderMaster,renderAudit,resetForLogout};
 }

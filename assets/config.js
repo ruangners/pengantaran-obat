@@ -1,9 +1,11 @@
+import { DEPLOYMENT_CONFIG } from './deployment.js?v=1.0.0-rc1';
+
 export const APP_CONFIG = Object.freeze({
   appName: 'Pengantaran Obat Gratis',
   organization: 'RSUD Provinsi Nusa Tenggara Barat',
-  version: '6.1.10-stage6b1-hf5d-metasheet',
-  apiContract: 'ANTAROBAT-RC1-REDELIVERY-HF5D',
-  backendUrl: '',
+  version: '1.0.0-rc1',
+  apiContract: 'ANTAROBAT-V1',
+  backendUrl: String(DEPLOYMENT_CONFIG.backendUrl || '').trim(),
   backendStorageKey: 'antarobat_backend_url',
   sessionStorageKey: 'antarobat_session',
   clientIdStorageKey: 'antarobat_client_id',
@@ -14,5 +16,6 @@ export const APP_CONFIG = Object.freeze({
   mutationReplayWindowMs: 120000,
   mutationBusyRetryCount: 2,
   mutationBusyRetryDelayMs: 700,
-  sessionRecheckMs: 5 * 60 * 1000
+  sessionRecheckMs: 5 * 60 * 1000,
+  statsMinimumSample: 10
 });

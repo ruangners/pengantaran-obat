@@ -7,13 +7,13 @@
   <meta name="description" content="Pengantaran Obat Gratis RSUD Provinsi Nusa Tenggara Barat">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/logo-rsud.png">
-  <link rel="stylesheet" href="./assets/styles.css?v=6.1.10-hf5d">
+  <link rel="stylesheet" href="./assets/styles.css?v=1.0.0-rc1">
   <title>Pengantaran Obat Gratis</title>
 </head>
 <body>
   <div id="requestBar" class="request-bar" aria-hidden="true"></div>
-  <div id="networkBanner" class="network-banner hidden">⚠ Perangkat offline. Aksi baru belum dapat dikirim ke server.</div>
-  <div id="updateBanner" class="update-banner hidden"><span>Versi aplikasi baru tersedia.</span><button id="applyUpdateButton" type="button">Muat Ulang Aman</button></div>
+  <div id="networkBanner" class="network-banner hidden">Perangkat offline. Periksa koneksi internet.</div>
+  <div id="updateBanner" class="update-banner hidden"><span>Versi aplikasi baru tersedia.</span><button id="applyUpdateButton" type="button">Perbarui</button></div>
   <div id="loading" class="app-loading"><div class="spinner" aria-label="Memuat"></div></div>
 
   <section id="loginView" class="login-page hidden">
@@ -25,16 +25,16 @@
       <div class="login-copy">
         <div class="eyebrow">Layanan Pengantaran Obat</div>
         <h1>Pengantaran Obat Gratis</h1>
-        <p>Satu aplikasi untuk Farmasi, Kurir, Admin, dan Manajemen.</p>
+        <p>Satu alur terintegrasi untuk Farmasi, Kurir, Admin Data, dan Manajemen.</p>
       </div>
-      <div class="login-foot">Akses terbatas untuk petugas yang berwenang. Data operasional dikelola sesuai kewenangan masing-masing role.</div>
+      <div class="login-foot">Akses terbatas untuk petugas yang berwenang.</div>
     </div>
 
     <div class="login-panel">
       <div class="login-card">
-        <div class="eyebrow" style="color:#078f99">AKSES PETUGAS</div>
+        <div class="eyebrow login-eyebrow">AKSES PETUGAS</div>
         <h2>Masuk ke aplikasi</h2>
-        <p class="lead">Gunakan PIN akses yang sudah terdaftar pada sistem Pengantaran Obat.</p>
+        <p class="lead">Gunakan PIN akses yang sudah terdaftar.</p>
         <form id="loginForm">
           <div class="field">
             <label for="pin">PIN Akses</label>
@@ -43,11 +43,11 @@
               <button class="icon-btn" id="togglePin" type="button" aria-label="Tampilkan PIN">◉</button>
             </div>
           </div>
-          <button id="loginButton" class="primary-btn wide" type="submit" style="margin-top:16px">Masuk</button>
+          <button id="loginButton" class="primary-btn wide login-submit" type="submit">Masuk</button>
         </form>
-        <div id="backendState" class="status-line"><span class="dot"></span><span>Backend belum dikonfigurasi</span></div>
+        <div id="backendState" class="status-line"><span class="dot"></span><span>Menghubungkan layanan…</span></div>
         <div id="loginMessage"></div>
-        <div class="setup-link"><button id="openBackendSetup" type="button">Pengaturan koneksi backend</button></div>
+        <div class="setup-link"><button id="initialSetupLink" class="hidden" type="button">Konfigurasi awal sistem</button></div>
       </div>
     </div>
   </section>
@@ -59,14 +59,14 @@
       <nav id="sideNav" class="nav-list"></nav>
       <div class="side-user">
         <strong id="sideUserName">-</strong><small id="sideUserRole">-</small>
-        <div class="side-actions"><button id="backendButton">Backend</button><button id="logoutButton">Keluar</button></div>
+        <div class="side-actions"><button id="sidebarBackendButton" class="hidden">Koneksi</button><button id="logoutButton">Keluar</button></div>
       </div>
     </aside>
 
     <div class="main-wrap">
       <header class="topbar">
         <div class="topbar-title"><strong id="pageTitle">Beranda</strong><span id="pageSubtitle">Pengantaran Obat Gratis</span></div>
-        <div class="topbar-right"><div id="roleChip" class="role-chip">ROLE</div><div id="avatar" class="avatar">A</div></div>
+        <div class="topbar-right"><div id="roleChip" class="role-chip">ROLE</div><button id="avatarButton" class="avatar-button" type="button" aria-label="Buka akun"><span id="avatar" class="avatar">A</span></button></div>
       </header>
       <main id="pageContent" class="page"></main>
     </div>
@@ -75,18 +75,16 @@
 
   <div id="backendModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
     <div class="modal">
-      <h3>Koneksi Apps Script</h3>
-      <p>Tempel URL deployment Web App yang berakhir <strong>/exec</strong>. URL disimpan pada browser ini dan bukan kredensial rahasia.</p>
-      <div class="field"><label for="backendUrl">Apps Script Web App URL</label><input id="backendUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></div>
+      <div class="modal-head"><div><div class="eyebrow">ADMIN DATA</div><h3>Pengaturan Koneksi</h3><p>Gunakan hanya untuk konfigurasi atau pemulihan sistem.</p></div><button id="closeBackendSetup" class="modal-x" type="button">×</button></div>
+      <div class="field"><label for="backendUrl">Backend Apps Script</label><input id="backendUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></div>
       <div id="backendModalMessage"></div>
-      <div class="small-help">URL backend disimpan pada browser ini. PIN tidak disimpan.</div>
-      <div class="modal-actions"><button id="closeBackendSetup" class="secondary-btn" type="button">Batal</button><button id="saveBackendSetup" class="primary-btn" type="button">Simpan & Uji</button></div>
+      <div class="modal-actions"><button id="saveBackendSetup" class="primary-btn" type="button">Simpan & Uji</button></div>
     </div>
   </div>
 
   <div id="appModal" class="modal-backdrop hidden" role="dialog" aria-modal="true"><div id="modalContent" class="modal"></div></div>
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script type="module" src="./assets/app.js?v=6.1.10-hf5d"></script>
+  <script type="module" src="./assets/app.js?v=1.0.0-rc1"></script>
 </body>
 </html>
