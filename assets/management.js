@@ -1,3 +1,4 @@
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc3';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -258,8 +259,9 @@ export function createManagementModule(ctx) {
   async function loadReports(force) { try { await ensureData(force); drawReports(); } catch (error) { document.getElementById('mgmtReports').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; } }
   function drawReports() {
     const root = document.getElementById('mgmtReports'); if (!root) return;
-    root.innerHTML = `<div class="report-actions"><button id="printManagementReport" class="primary-btn">Cetak / Simpan PDF</button></div>${reportPreview(state.data||{})}`;
-    document.getElementById('printManagementReport').onclick = () => printReport(state.data || {});
+    root.innerHTML = `<div class="report-actions"><button id="downloadManagementReport" class="primary-btn">Unduh PDF</button><button id="printManagementReport" class="secondary-btn">Cetak Laporan</button></div>${reportPreview(state.data||{})}`;
+    document.getElementById('downloadManagementReport').onclick = e => downloadReport(state.data || {}, e.currentTarget);
+    document.getElementById('printManagementReport').onclick = e => openReportPdf(state.data || {}, e.currentTarget);
   }
 
   function reportPreview(d) {
@@ -277,7 +279,7 @@ export function createManagementModule(ctx) {
     const entries = [
       ['Total Waktu Layanan',stats.total],['Pendaftaran hingga Siap Diantar',stats.pharmacy],['Menunggu Diambil Kurir',stats.consolidation],['Durasi Penyelesaian Pengantaran',stats.courier]
     ];
-    return `<div class="report-time-grid">${entries.map(([label,x]) => { const sample=Number(x?.sample||0); if(!sample) return `<div><span>${esc(label)}</span><b>Belum ada data</b></div>`; if(sample<MIN_STATS_SAMPLE) return `<div><span>${esc(label)}</span><b>Mean ${minutes(x.average)}</b><small>${n(sample)} pengantaran; Median/P90 belum cukup data</small></div>`; return `<div><span>${esc(label)}</span><b>Mean ${minutes(x.average)}</b><small>Median ${minutes(x.median)} • P90 ≤ ${minutes(x.p90)}</small></div>`; }).join('')}</div>`;
+    return `<div class="report-time-grid">${entries.map(([label,x]) => { const sample=Number(x?.sample||0); if(!sample) return `<div><span>${esc(label)}</span><b>Belum ada data</b></div>`; if(sample<MIN_STATS_SAMPLE) return `<div><span>${esc(label)}</span><b>Mean (rata-rata) ${minutes(x.average)}</b><small>${n(sample)} pengantaran; Median/P90 belum cukup data</small></div>`; return `<div><span>${esc(label)}</span><b>Mean (rata-rata) ${minutes(x.average)}</b><small>Median (nilai tengah) ${minutes(x.median)} • P90 (90% selesai dalam) ≤ ${minutes(x.p90)}</small></div>`; }).join('')}</div>`;
   }
   function reportIncidentTable(rows = []) {
     if (!rows.length) return '<p>Tidak ada kendala aktif.</p>';
@@ -295,22 +297,32 @@ export function createManagementModule(ctx) {
   function reportDeliverySummary(a = {}) {
     return `<div class="report-summary-grid"><div><span>Total Pengantaran</span><b>${n(a.total)}</b></div><div><span>Berhasil Diantar</span><b>${n(a.delivered)}</b></div><div><span>Gagal Diantar</span><b>${n(a.failed)}</b></div><div><span>Kasus Pengantaran Ulang</span><b>${n(a.retriedCases)}</b></div><div><span>Pengantaran Ulang Berhasil</span><b>${n(a.retryDelivered)}</b></div><div><span>Ambil Mandiri</span><b>${n(a.selfPickup)}</b></div></div>`;
   }
-  function printReport(d) {
-    const win = window.open('', '_blank', 'width=900,height=1000');
-    if (!win) return ctx.showToast('Jendela cetak diblokir browser. Izinkan pop-up untuk aplikasi ini.', 'error');
-    const title = `Laporan Pengantaran Obat ${d.meta?.start || ''} s.d. ${d.meta?.end || ''}`;
-    const logoUrl = new URL('./icons/logo-rsud.png', window.location.href).href;
-    const html = reportPreview(d).replaceAll('./icons/logo-rsud.png', logoUrl);
-    win.document.open();
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
-      @page{size:A4 portrait;margin:14mm 12mm 14mm}
-      *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#102a36;margin:0;font-size:9.5px;line-height:1.35}h2{margin:1px 0 4px;font-size:17px}h3{margin:12px 0 6px;font-size:11px;color:#173b46}.mgmt-report-preview{border:0!important;box-shadow:none!important;padding:0!important}.report-preview-head{display:flex;align-items:center;gap:12px;border-bottom:2px solid #0a6675;padding-bottom:9px;margin-bottom:10px}.report-preview-head img{display:block;width:48px;height:48px;object-fit:contain}.report-preview-head strong{font-size:10px}.report-preview-head p{margin:0;color:#536b74;font-size:8.5px}.report-section{break-inside:auto;margin-top:10px}.report-section>h3{break-after:avoid}.report-summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}.report-summary-grid>div,.report-time-grid>div{border:1px solid #ccdadd;border-radius:6px;padding:7px;break-inside:avoid}.report-summary-grid span,.report-time-grid span{display:block;color:#64748b;font-size:7.5px;text-transform:uppercase;font-weight:700}.report-summary-grid b,.report-time-grid b{display:block;font-size:12px;margin-top:3px}.report-time-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.report-time-grid small{display:block;color:#64748b;margin-top:3px;font-size:7.5px}.grid{display:grid;gap:7px}.grid-2{grid-template-columns:1fr 1fr}.table-scroll{overflow:visible}table{width:100%;border-collapse:collapse;page-break-inside:auto}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #d7e0e5;padding:5px;text-align:left;vertical-align:top}th{background:#eef6f7;font-size:7.5px}.content-card{border:0!important;box-shadow:none!important}.active-incident-panel{display:none}
-    </style></head><body>${html}<script>setTimeout(()=>window.print(),450)<\/script></body></html>`);
-    win.document.close(); win.focus();
+  async function createReportBlob(d) {
+    return buildManagementPdf(d,{logoUrl:new URL('./icons/logo-rsud.png',window.location.href).href,minimumStatsSample:MIN_STATS_SAMPLE});
   }
 
-  function resetForLogout() {
-    state.data = null; state.loading = null; state.lastLoadedKey = ''; state.basis = 'DAFTAR'; state.performanceTab = 'pharmacy'; applyPreset('month');
+  async function downloadReport(d, button) {
+    const previous = button.textContent; button.disabled = true; button.textContent = 'Menyiapkan PDF…';
+    try {
+      const blob = await createReportBlob(d);
+      downloadPdfBlob(blob, reportFilename(d));
+      ctx.showToast('PDF berhasil dibuat.', 'success');
+    } catch (error) { ctx.showToast(error.message || 'PDF tidak dapat dibuat.', 'error'); }
+    finally { button.disabled = false; button.textContent = previous; }
+  }
+
+  async function openReportPdf(d, button) {
+    const preview = window.open('', '_blank');
+    if (!preview) return ctx.showToast('Jendela laporan diblokir browser. Izinkan pop-up untuk aplikasi ini.', 'error');
+    const previous = button.textContent; button.disabled = true; button.textContent = 'Menyiapkan PDF…';
+    try {
+      preview.document.write('<!doctype html><title>Menyiapkan laporan…</title><body style="font-family:Arial;padding:28px">Menyiapkan laporan PDF…</body>');
+      const blob = await createReportBlob(d);
+      const url = URL.createObjectURL(blob);
+      preview.location.replace(url);
+      setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+    } catch (error) { preview.close(); ctx.showToast(error.message || 'PDF tidak dapat dibuat.', 'error'); }
+    finally { button.disabled = false; button.textContent = previous; }
   }
 
   return { renderHome, renderPerformance, renderAreas, renderReports, resetForLogout };

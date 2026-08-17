@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc2';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc3';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -52,8 +52,8 @@ export function createFarmasiModule(ctx) {
     return `<span class="status-badge ${kind}">${esc(text)}</span>`;
   }
 
-  function metric(label, value, note, icon = '') {
-    return `<div class="card metric-card"><div class="metric-top"><span>${esc(label)}</span>${icon ? `<span class="metric-icon">${icon}</span>` : ''}</div><div class="metric-value">${esc(value)}</div><div class="metric-note">${esc(note)}</div></div>`;
+  function metric(label, value, note, icon = '', tone = '') {
+    return `<div class="card metric-card ${tone}"><div class="metric-top"><span>${esc(label)}</span>${icon ? `<span class="metric-icon">${icon}</span>` : ''}</div><div class="metric-value">${esc(value)}</div><div class="metric-note">${esc(note)}</div></div>`;
   }
 
   function buttonBusy(button, busy, busyText = 'Memproses…') {
@@ -335,9 +335,9 @@ export function createFarmasiModule(ctx) {
     const metrics = document.getElementById('farmasiHomeMetrics');
     if (metrics) metrics.innerHTML = [
       metric('Menunggu Diproses', counts.waiting, 'Belum ditandai siap', '◷'),
-      metric('Siap Diantar', counts.ready, 'Menunggu diambil kurir', '▣'),
-      metric('Dalam Perjalanan', counts.transit, 'Sedang diantar', '➜'),
-      metric('Selesai Hari Ini', counts.delivered + counts.failed, `${counts.delivered} terkirim • ${counts.failed} gagal`, '✓')
+      metric('Siap Diantar', counts.ready, 'Menunggu diambil kurir', '▣', 'tone-ready'),
+      metric('Dalam Perjalanan', counts.transit, 'Sedang diantar', '➜', 'tone-transit'),
+      metric('Selesai Hari Ini', counts.delivered + counts.failed, `${counts.delivered} terkirim • ${counts.failed} gagal`, '✓', 'tone-success')
     ].join('');
     const attention = document.getElementById('farmasiAttention');
     if (attention) attention.innerHTML = `<button class="attention-card ${state.pending.length ? 'warn' : ''}" id="attentionVerification"><span class="attention-icon">✓</span><span><strong>${state.pending.length} menunggu verifikasi manual</strong><small>${state.pending.length ? 'Hubungi pasien/penerima dan selesaikan verifikasi.' : 'Tidak ada antrean verifikasi manual.'}</small></span><b>›</b></button>
@@ -443,7 +443,7 @@ export function createFarmasiModule(ctx) {
       box.innerHTML = `<div class="empty-state"><div>▤</div><h3>Belum ada data</h3><p>Tidak ada pendaftaran yang sesuai dengan pencarian hari ini.</p></div>`;
       return;
     }
-    box.innerHTML = `<div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jam</th><th>No. RM / Pasien</th><th>Wilayah</th><th>Status</th><th>Verifikasi</th><th>Aksi</th></tr></thead><tbody>${state.rows.map(r => `<tr>
+    box.innerHTML = `<div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jam</th><th>No. RM / Pasien</th><th>Wilayah</th><th>Status</th><th>Verifikasi</th><th>Aksi</th></tr></thead><tbody>${state.rows.map(r => `<tr class="status-row ${statusClass(r['Status'])}">
       <td data-label="Jam">${esc(String(r['Jam Daftar'] || '').slice(-5))}</td>
       <td data-label="Pasien"><strong>${esc(r['Nama Pasien'])}</strong>${r.__packageCode?`<span class="package-chip">${esc(r.__packageCode)}</span>`:''}${r.__isRetry?`<span class="retry-chip farmasi-retry-chip">PENGANTARAN KE-${Number(r.__attemptNo||2)}</span>`:''}<span class="cell-sub">No. RM ${esc(r['No RM'])}</span>${r.__courierNote?`<span class="cell-note"><b>Catatan Kurir:</b> ${esc(r.__courierNote)}</span>`:''}</td>
       <td data-label="Wilayah"><strong>${esc(r['Kelurahan'] || '-')}</strong><span class="cell-sub">${esc(r['Kecamatan'] || '')}${r['Kabupaten/Kota'] ? ` • ${esc(r['Kabupaten/Kota'])}` : ''}</span></td>
@@ -592,7 +592,7 @@ export function createFarmasiModule(ctx) {
   function renderLabelCards() {
     const box = document.getElementById('labelsContent'); if (!box) return;
     if (!state.rows.length) return void (box.innerHTML = `<div class="empty-state"><div>▣</div><h3>Belum ada label</h3><p>Pendaftaran hari ini akan muncul di sini.</p></div>`);
-    box.innerHTML = state.rows.map(r => `<article class="label-card"><div class="label-card-top"><strong class="package-code">${esc(r['Kode Paket'] || r.__packageCode || '—')}</strong>${badge(r['Status'], statusClass(r['Status']))}</div><h3>${esc(r['Nama Pasien'])}</h3><p>No. RM ${esc(r['No RM'])} • ${esc(String(r['Jam Daftar'] || '').slice(-5))}</p><div class="label-location"><strong>${esc(r['Kelurahan'] || '-')}</strong><span>${esc(r['Kecamatan'] || '')} • ${esc(r['Kabupaten/Kota'] || '')}</span></div><button class="secondary-btn wide" data-label-print="${esc(r['ID Sistem'])}">▣ Cetak Label A6</button></article>`).join('');
+    box.innerHTML = state.rows.map(r => `<article class="label-card ${statusClass(r['Status'])}"><div class="label-card-top"><strong class="package-code">${esc(r['Kode Paket'] || r.__packageCode || '—')}</strong>${badge(r['Status'], statusClass(r['Status']))}</div><h3>${esc(r['Nama Pasien'])}</h3><p>No. RM ${esc(r['No RM'])} • ${esc(String(r['Jam Daftar'] || '').slice(-5))}</p><div class="label-location"><strong>${esc(r['Kelurahan'] || '-')}</strong><span>${esc(r['Kecamatan'] || '')} • ${esc(r['Kabupaten/Kota'] || '')}</span></div><button class="secondary-btn wide" data-label-print="${esc(r['ID Sistem'])}">▣ Cetak Label A6</button></article>`).join('');
     box.querySelectorAll('[data-label-print]').forEach(btn => btn.addEventListener('click', () => printRecord(rowById(btn.dataset.labelPrint))));
   }
 

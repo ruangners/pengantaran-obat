@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#083543">
+  <meta name="theme-color" content="#052d39">
   <meta name="description" content="Pengantaran Obat Gratis RSUD Provinsi Nusa Tenggara Barat">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/logo-rsud.png">
-  <link rel="stylesheet" href="./assets/styles.css?v=1.0.0-rc2">
+  <link rel="stylesheet" href="./assets/styles.css?v=1.0.0-rc3">
   <title>Pengantaran Obat Gratis</title>
 </head>
 <body>
@@ -40,7 +40,7 @@
             <label for="pin">PIN Akses</label>
             <div class="pin-wrap">
               <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Masukkan PIN" maxlength="12" required>
-              <button class="icon-btn" id="togglePin" type="button" aria-label="Tampilkan PIN">◉</button>
+              <button class="icon-btn" id="togglePin" type="button" aria-label="Tampilkan PIN" title="Tampilkan PIN"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
             </div>
           </div>
           <button id="loginButton" class="primary-btn wide login-submit" type="submit">Masuk</button>
@@ -85,6 +85,6 @@
   <div id="appModal" class="modal-backdrop hidden" role="dialog" aria-modal="true"><div id="modalContent" class="modal"></div></div>
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <script type="module" src="./assets/app.js?v=1.0.0-rc2"></script>
+  <script type="module" src="./assets/app.js?v=1.0.0-rc3"></script>
 </body>
 </html>

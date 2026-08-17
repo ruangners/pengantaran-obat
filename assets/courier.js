@@ -85,8 +85,8 @@ export function createCourierModule(ctx) {
     if (view === 'history') renderHistoryData();
   }
 
-  function metric(label, value, note, icon) {
-    return `<div class="card metric-card"><div class="metric-top"><span>${esc(label)}</span><b>${esc(icon || '')}</b></div><div class="metric-value">${esc(value)}</div><div class="metric-note">${esc(note)}</div></div>`;
+  function metric(label, value, note, icon, tone = '') {
+    return `<div class="card metric-card ${tone}"><div class="metric-top"><span>${esc(label)}</span><b>${esc(icon || '')}</b></div><div class="metric-value">${esc(value)}</div><div class="metric-note">${esc(note)}</div></div>`;
   }
 
   function badge(text, cls = 'neutral') {
@@ -140,10 +140,10 @@ export function createCourierModule(ctx) {
     const metrics = document.getElementById('courierMetrics');
     if (!metrics) return;
     metrics.innerHTML = [
-      metric('Siap Diambil', state.ready.length, 'Paket tersedia', '◎'),
-      metric('Tugas Aktif', state.mine.length, 'Sedang dibawa', '➜'),
-      metric('Selesai Hari Ini', state.history.length, 'Riwayat kurir', '✓'),
-      metric('Kendala Aktif', state.activeIncident ? 1 : 0, state.activeIncident ? state.activeIncident.type : 'Tidak ada', '⚠')
+      metric('Siap Diambil', state.ready.length, 'Paket tersedia', '◎', 'tone-ready'),
+      metric('Tugas Aktif', state.mine.length, 'Sedang dibawa', '➜', 'tone-transit'),
+      metric('Selesai Hari Ini', state.history.length, 'Riwayat kurir', '✓', 'tone-success'),
+      metric('Kendala Aktif', state.activeIncident ? 1 : 0, state.activeIncident ? state.activeIncident.type : 'Tidak ada', '⚠', state.activeIncident ? 'tone-warning' : '')
     ].join('');
     const incident = document.getElementById('courierHomeIncident');
     if (incident) incident.innerHTML = incidentBanner();

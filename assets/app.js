@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc2';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc2';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc2';
-import { createCourierModule } from './courier.js?v=1.0.0-rc2';
-import { createAdminModule } from './admin.js?v=1.0.0-rc2';
-import { createManagementModule } from './management.js?v=1.0.0-rc2';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc3';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc3';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc3';
+import { createCourierModule } from './courier.js?v=1.0.0-rc3';
+import { createAdminModule } from './admin.js?v=1.0.0-rc3';
+import { createManagementModule } from './management.js?v=1.0.0-rc3';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -503,7 +503,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc2',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc3',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {
@@ -527,7 +527,15 @@ async function boot() {
   $('loginForm')?.addEventListener('submit',login);
   $('logoutButton')?.addEventListener('click',logout);
   $('avatarButton')?.addEventListener('click',() => { if (state.session) openView('account'); });
-  $('togglePin')?.addEventListener('click',() => { const input = $('pin'); input.type = input.type === 'password' ? 'text' : 'password'; });
+  $('togglePin')?.addEventListener('click',() => {
+    const input = $('pin'); const button = $('togglePin'); const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.setAttribute('aria-label', show ? 'Sembunyikan PIN' : 'Tampilkan PIN');
+    button.setAttribute('title', show ? 'Sembunyikan PIN' : 'Tampilkan PIN');
+    button.innerHTML = show
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.7 6.2A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16.3 16.3 0 0 1-3.2 3.8"/><path d="M6.2 6.3C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6a9.5 9.5 0 0 0 2.6-.4"/><path d="M10.2 10.2a2.8 2.8 0 0 0 3.6 3.6"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>';
+  });
   $('applyUpdateButton')?.addEventListener('click',applyAppUpdate);
 
   window.addEventListener('offline',() => {
