@@ -235,12 +235,14 @@ export class PengantaranApi {
 
   adminBootstrap(token) { return this._read('admin.bootstrap', String(token || '')); }
   adminRows(token, search = '') { return this._read('admin.search', String(token || ''), String(search || '')); }
-  adminUpdateStatus(token, id, status, note = '') { return this._mutate('admin.correctStatus', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
+  adminUpdateStatus(token, id, status, note = '', adminPin = '') { return this._mutate('admin.correctStatus', String(token || ''), String(id || ''), String(status || ''), String(note || ''), String(adminPin || '')); }
   adminArchiveHealth(token) { return this._read('admin.archiveHealth', String(token || '')); }
   adminResilienceHealth(token) { return this._read('admin.resilienceHealth', String(token || '')); }
   adminBackupNow(token, note = '') { return this._mutate('admin.backupNow', String(token || ''), String(note || '')); }
-  adminPrepareRecovery(token, backupId) { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || '')); }
-  adminEnsureBackupSchedule(token) { return this._mutate('admin.ensureBackupSchedule', String(token || '')); }
+  adminPrepareRecovery(token, backupId, adminPin = '') { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || ''), String(adminPin || '')); }
+  adminRestoreMaster(token, backupId, sheets = [], adminPin = '') { return this._mutate('admin.restoreMaster', String(token || ''), String(backupId || ''), Array.isArray(sheets) ? sheets : [], String(adminPin || '')); }
+  adminApplyProtections(token, adminPin = '') { return this._mutate('admin.applyProtections', String(token || ''), String(adminPin || '')); }
+  adminEnsureBackupSchedule(token, adminPin = '') { return this._mutate('admin.ensureBackupSchedule', String(token || ''), String(adminPin || '')); }
   adminRefreshMaster(token) { return this._read('admin.refreshMaster', String(token || '')); }
   adminAuditRows(token, limit = 100) { return this._read('admin.audit', String(token || ''), Number(limit || 100)); }
   deliveryHistory(token, id) { return this._read('admin.deliveryHistory', String(token || ''), String(id || '')); }

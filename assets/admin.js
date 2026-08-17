@@ -26,6 +26,33 @@ export function createAdminModule(ctx) {
   function fmtDateTime(value) { if (!value) return '-'; const d = new Date(value); return Number.isNaN(d.getTime()) ? esc(value) : esc(new Intl.DateTimeFormat('id-ID',{dateStyle:'medium',timeStyle:'short'}).format(d)); }
   function backupKindLabel(kind) { return ({DAILY:'Harian',MONTHLY:'Bulanan',PRECHANGE:'Sebelum Perubahan',RECOVERY:'Recovery'})[kind] || kind || '-'; }
 
+
+  function masterSheetLabel(name) {
+    const map = {'MASTER_DATA':'Master Data','AKSES':'Akun & PIN','MASTER_WILAYAH':'Wilayah Layanan'};
+    return map[name] || name || '-';
+  }
+
+  function requestAdminPin_({title='Konfirmasi tindakan sensitif',message='Masukkan PIN Admin untuk memastikan tindakan ini memang Anda kehendaki.',confirmLabel='Ya, Lanjutkan'}={}) {
+    return new Promise(resolve => {
+      ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">KONFIRMASI ADMIN</div><h3>${esc(title)}</h3><p>${esc(message)}</p></div><button class="modal-x" id="sensitivePinClose">×</button></div>
+        <div class="system-alert warning compact-alert"><strong>Data sensitif</strong><span>Gunakan PIN Admin yang sama dengan saat login. PIN hanya diminta ulang sebagai pengingat sebelum tindakan penting.</span></div>
+        <div class="field"><label for="sensitiveAdminPin">PIN Admin <b>*</b></label><input id="sensitiveAdminPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN Admin"></div>
+        <div id="sensitivePinMsg"></div><div class="modal-actions"><button id="sensitivePinCancel" class="secondary-btn">Batal</button><button id="sensitivePinOk" class="warning-btn">${esc(confirmLabel)}</button></div>`);
+      let done = false;
+      const finish = value => { if (done) return; done = true; ctx.closeModal(); resolve(value); };
+      document.getElementById('sensitivePinClose')?.addEventListener('click',() => finish(null));
+      document.getElementById('sensitivePinCancel')?.addEventListener('click',() => finish(null));
+      const submit = () => {
+        const pin = String(document.getElementById('sensitiveAdminPin')?.value || '').trim();
+        if (!pin) { document.getElementById('sensitivePinMsg').innerHTML = '<div class="alert error">PIN Admin wajib diisi.</div>'; return; }
+        finish(pin);
+      };
+      document.getElementById('sensitivePinOk')?.addEventListener('click',submit);
+      document.getElementById('sensitiveAdminPin')?.addEventListener('keydown',event => { if (event.key === 'Enter') submit(); });
+      setTimeout(() => document.getElementById('sensitiveAdminPin')?.focus(),30);
+    });
+  }
+
   async function bootstrap(force=false) {
     if (state.loaded && !force) return state;
     const response = await api().adminBootstrap(token());
@@ -123,19 +150,27 @@ export function createAdminModule(ctx) {
     if (!record) return;
     ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">KOREKSI DATA</div><h3>${fmt(record['Nama Pasien'])}</h3><p>${esc(packageCode(record))}</p></div><button class="modal-x" data-modal-close>×</button></div>
       <div class="correction-compare"><div><span>Status Saat Ini</span><strong>${esc(record['Status'] || '-')}</strong></div><div class="correction-arrow">→</div><div><span>Status Baru</span><select id="adminNewStatus">${statusOptions.map(status => `<option value="${status}" ${status===record['Status']?'selected':''}>${status}</option>`).join('')}</select></div></div>
-      <div class="field"><label for="adminCorrectionNote">Alasan koreksi <b>*</b></label><textarea id="adminCorrectionNote" rows="3" placeholder="Jelaskan mengapa data perlu dikoreksi"></textarea></div><div id="adminCorrectionMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="adminCorrectionSave" class="primary-btn">Simpan Koreksi</button></div>`);
+      <div class="field"><label for="adminCorrectionNote">Alasan koreksi <b>*</b></label><textarea id="adminCorrectionNote" rows="3" placeholder="Jelaskan mengapa data perlu dikoreksi"></textarea></div>
+      <div class="system-alert warning compact-alert"><strong>Konfirmasi tindakan sensitif</strong><span>Koreksi akan mengubah data pelayanan dan tercatat permanen pada Audit. Masukkan PIN Admin yang sama dengan saat login.</span></div>
+      <div class="field"><label for="adminCorrectionPin">PIN Admin <b>*</b></label><input id="adminCorrectionPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN Admin"></div>
+      <div id="adminCorrectionMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="adminCorrectionSave" class="warning-btn">Simpan Koreksi</button></div>`);
     document.getElementById('adminCorrectionSave')?.addEventListener('click',async() => {
+      const button = document.getElementById('adminCorrectionSave');
       const status = document.getElementById('adminNewStatus').value;
       const note = document.getElementById('adminCorrectionNote').value.trim();
+      const pin = document.getElementById('adminCorrectionPin').value.trim();
       if (!note) { document.getElementById('adminCorrectionMsg').innerHTML = '<div class="alert error">Alasan koreksi wajib diisi.</div>'; return; }
-      const ok = await ctx.confirmAction({title:'Simpan koreksi?',message:`Status ${record['Status']} akan diubah menjadi ${status}. Perubahan akan tercatat pada Audit.`,confirmLabel:'Simpan Koreksi',tone:'warning'});
-      if (!ok) return;
+      if (!pin) { document.getElementById('adminCorrectionMsg').innerHTML = '<div class="alert error">Masukkan PIN Admin untuk melanjutkan.</div>'; return; }
+      button.disabled = true;
       try {
-        await api().adminUpdateStatus(token(),id,status,note);
+        await api().adminUpdateStatus(token(),id,status,note,pin);
         ctx.closeModal();
-        ctx.showToast('Koreksi data berhasil disimpan.','success');
+        ctx.showToast('Koreksi data berhasil disimpan dan dicatat pada Audit.','success');
         await loadRows();
-      } catch (error) { document.getElementById('adminCorrectionMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+      } catch (error) {
+        document.getElementById('adminCorrectionMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`;
+        button.disabled = false;
+      }
     });
   }
 
@@ -169,35 +204,71 @@ export function createAdminModule(ctx) {
     const lastMonthly = r.lastMonthly || null;
     const backupStatus = String(r.status || 'BELUM SIAP');
     const recent = Array.isArray(r.recent) ? r.recent : [];
+    const recoveryRecent = Array.isArray(r.recoveryRecent) ? r.recoveryRecent : [];
     const warnings = Array.isArray(r.warnings) ? r.warnings : [];
     const secondary = r.secondary || {};
+    const protection = r.protection || {};
+    const lastRecovery = r.lastRecovery || null;
+    const lastRestore = r.lastMasterRestore || null;
+    const recoverableSheets = Array.isArray(r.recoverableMasterSheets) ? r.recoverableMasterSheets : [];
+
+    const recoverySummary = lastRecovery ? `<div class="content-card recovery-status-card"><div class="card-head-row"><div><span class="eyebrow">SALINAN PEMULIHAN TERAKHIR</span><h3>✓ Siap diperiksa</h3><p>Salinan ini tidak mengubah Master aktif.</p></div>${lastRecovery.recoveryUrl?`<button class="mini-btn" id="openLastRecovery">Buka Salinan</button>`:''}</div><div class="recovery-facts"><div><span>Sumber</span><strong>${esc(lastRecovery.sourceName || '-')}</strong></div><div><span>Dibuat</span><strong>${fmtDateTime(lastRecovery.at)}</strong></div><div><span>Oleh</span><strong>${esc(lastRecovery.actor || '-')}</strong></div><div><span>Nama salinan</span><strong class="backup-file-name">${esc(lastRecovery.recoveryName || '-')}</strong></div></div></div>` : '';
+
+    const restoreSummary = lastRestore ? `<div class="system-alert success"><strong>Pemulihan Master terakhir berhasil</strong><span>${fmtDateTime(lastRestore.at)} • ${esc((lastRestore.sheets || []).map(masterSheetLabel).join(', ') || '-')} • oleh ${esc(lastRestore.actor || '-')}</span></div>` : '';
 
     root.innerHTML = `
       <div class="admin-section-title"><div><span class="eyebrow">ARSIP TRANSAKSI</span><h2>Retensi & Arsip Tahunan</h2></div></div>
       <div class="grid grid-4">${metric('Retensi',`${Number(config.retentionDays||120)} hari`,'Data aktif')}${metric('Menunggu Arsip',Number(queue.waiting||0),'Antrean')}${metric('Gagal Arsip',Number(queue.failed||0),'Perlu perhatian')}${metric('Tahun Arsip',Number(a.registry?.length||a.years?.length||0),'Terdeteksi')}</div>
       <div class="content-card technical-panel"><h3>Informasi Arsip</h3><pre>${esc(JSON.stringify({config:a.config||{},queue:a.queue||{},lastRun:a.lastRun||a.lastArchiveRun||null},null,2))}</pre></div>
 
-      <div class="admin-section-title resilience-heading"><div><span class="eyebrow">BACKUP MASTER</span><h2>Backup & Recovery</h2><p>Salinan utuh Spreadsheet dibuat otomatis. Recovery selalu dibuat sebagai salinan terpisah untuk diperiksa terlebih dahulu.</p></div><div class="admin-section-actions"><button id="backupNow" class="primary-btn">Backup Master Sekarang</button>${trigger.installed?'':`<button id="backupSchedule" class="secondary-btn">Aktifkan Backup Otomatis</button>`}</div></div>
+      <div class="admin-section-title resilience-heading"><div><span class="eyebrow">BACKUP MASTER</span><h2>Backup & Pemulihan</h2><p>Backup harian menyimpan 30 salinan terbaru dan backup bulanan 12 salinan terbaru. Salinan yang melewati batas dipindahkan ke Sampah Drive.</p></div><div class="admin-section-actions"><button id="backupNow" class="primary-btn">Backup Master Sekarang</button>${trigger.installed?'':`<button id="backupSchedule" class="secondary-btn">Aktifkan Backup Otomatis</button>`}</div></div>
       <div class="grid grid-4">
         ${metric('Status Backup',backupStatus,trigger.installed?'Otomatis aktif':'Trigger belum aktif')}
         ${metric('Backup Harian',Number(counts.daily||0),lastDaily?`Terakhir ${fmtDateTime(lastDaily.createdAt)}`:'Belum tersedia')}
         ${metric('Backup Bulanan',Number(counts.monthly||0),lastMonthly?`Terakhir ${fmtDateTime(lastMonthly.createdAt)}`:'Belum tersedia')}
-        ${metric('Sebelum Perubahan',Number(counts.prechange||0),'Backup manual')}
+        ${metric('Sebelum Perubahan',Number(counts.prechange||0),'Tidak dihapus otomatis')}
       </div>
       ${warnings.length?`<div class="system-alert warning"><strong>Backup perlu perhatian</strong><span>${warnings.map(esc).join(' • ')}</span></div>`:`<div class="system-alert success"><strong>Backup Master aman</strong><span>Backup otomatis aktif dan cadangan terbaru tersedia.</span></div>`}
       <div class="content-card resilience-config-card">
         <div class="resilience-config-row"><div><span>Jadwal otomatis</span><strong>${esc(trigger.schedule || '-')}</strong></div><div><span>Retensi backup</span><strong>${Number(r.config?.dailyKeep||30)} harian • ${Number(r.config?.monthlyKeep||12)} bulanan</strong></div><div><span>Cadangan lokasi kedua</span><strong>${secondary.configured?(secondary.error?'Perlu perhatian':'Aktif'):'Belum dikonfigurasi'}</strong></div>${r.folders?.root?.url?`<button id="openBackupFolder" class="mini-btn">Buka Folder Backup</button>`:''}</div>
       </div>
+
+      <div class="content-card protection-card">
+        <div class="card-head-row"><div><span class="eyebrow">KEAMANAN MASTER</span><h3>Proteksi Edit Manual</h3><p>Proteksi membatasi perubahan langsung pada sheet sistem. Penghapusan file dari Google Drive tetap mengikuti izin Drive.</p></div><button id="applyMasterProtection" class="secondary-btn">${String(protection.status||'')==='AMAN'?'Periksa / Terapkan Ulang':'Perbaiki Proteksi'}</button></div>
+        <div class="protection-summary"><div><span>Status</span><strong>${esc(protection.status || 'BELUM DIPERIKSA')}</strong></div><div><span>Sheet terlindungi</span><strong>${Number(protection.protected||0)} / ${Number(protection.total||0)}</strong></div><div><span>Perlu perhatian</span><strong>${Number((protection.unprotected||[]).length + (protection.missing||[]).length)}</strong></div></div>
+        ${(protection.unprotected||[]).length?`<div class="alert warning">Belum terlindungi: ${esc(protection.unprotected.join(', '))}</div>`:''}
+      </div>
+
+      ${recoverySummary}
+      ${restoreSummary}
+
       <div class="content-card">
-        <div class="card-head-row"><div><h3>Backup Terbaru</h3><p>Pilih backup yang sehat untuk menyiapkan salinan recovery. Master aktif tidak pernah ditimpa otomatis.</p></div></div>
-        ${recent.length?`<div class="table-scroll"><table class="data-table responsive-table"><thead><tr><th>Jenis</th><th>Nama File</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>${recent.map(item=>`<tr><td data-label="Jenis"><strong>${esc(backupKindLabel(item.kind))}</strong></td><td data-label="Nama File"><span class="backup-file-name">${esc(item.name)}</span></td><td data-label="Dibuat">${fmtDateTime(item.createdAt)}</td><td data-label="Aksi"><div class="row-actions">${item.url?`<button class="mini-btn" data-open-backup="${esc(item.url)}">Buka</button>`:''}<button class="mini-btn primary-soft" data-recovery="${esc(item.id)}" data-recovery-name="${esc(item.name)}">Siapkan Recovery</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state"><h3>Belum ada backup</h3><p>Aktifkan backup otomatis atau buat backup manual.</p></div>'}
+        <div class="card-head-row"><div><h3>Backup Terbaru</h3><p>Maksimal 12 backup terbaru ditampilkan. Buka untuk memeriksa, siapkan salinan pemulihan, atau pulihkan bagian Master tertentu.</p></div></div>
+        ${recent.length?`<div class="table-scroll"><table class="data-table responsive-table"><thead><tr><th>Jenis</th><th>Nama File</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>${recent.map(item=>`<tr><td data-label="Jenis"><strong>${esc(backupKindLabel(item.kind))}</strong></td><td data-label="Nama File"><span class="backup-file-name">${esc(item.name)}</span></td><td data-label="Dibuat">${fmtDateTime(item.createdAt)}</td><td data-label="Aksi"><div class="row-actions">${item.url?`<button class="mini-btn" data-open-backup="${esc(item.url)}">Buka</button>`:''}<button class="mini-btn primary-soft" data-recovery="${esc(item.id)}" data-recovery-name="${esc(item.name)}">Siapkan Salinan</button><button class="mini-btn warning-soft" data-restore-master="${esc(item.id)}" data-restore-name="${esc(item.name)}">Pulihkan Master</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state"><h3>Belum ada backup</h3><p>Aktifkan backup otomatis atau buat backup manual.</p></div>'}
+      </div>
+
+      ${recoveryRecent.length?`<div class="content-card"><div class="card-head-row"><div><h3>Salinan Pemulihan Terbaru</h3><p>Salinan review yang sudah disiapkan. File ini terpisah dari Master aktif.</p></div></div><div class="recovery-list">${recoveryRecent.map(item=>`<div class="recovery-list-item"><div><strong class="backup-file-name">${esc(item.name)}</strong><span>${fmtDateTime(item.createdAt)}</span></div>${item.url?`<button class="mini-btn" data-open-recovery="${esc(item.url)}">Buka</button>`:''}</div>`).join('')}</div></div>`:''}
+
+      <div class="content-card recovery-guide-card">
+        <div class="card-head-row"><div><span class="eyebrow">PANDUAN PEMULIHAN CEPAT</span><h3>Jika terjadi kesalahan, mulai dari sini</h3><p>Petunjuk ini dibuat untuk Admin Data. Tidak perlu membuka dokumentasi panjang saat terjadi masalah.</p></div></div>
+        <div class="recovery-guide-grid">
+          <details open><summary>Salah menghapus atau mengubah data Master</summary><ol><li>Jangan lakukan perubahan lain.</li><li>Pilih backup sebelum kesalahan terjadi.</li><li>Klik <b>Pulihkan Master</b>.</li><li>Pilih bagian yang ingin dipulihkan.</li><li>Masukkan PIN Admin.</li><li>Sistem membuat backup pengaman otomatis sebelum pemulihan.</li></ol></details>
+          <details><summary>Satu sheet Master terhapus</summary><ol><li>Jangan membuat sheet pengganti manual.</li><li>Pilih backup sehat.</li><li>Klik <b>Pulihkan Master</b> dan pilih sheet yang hilang.</li><li>Sistem akan membuat sheet kembali dari backup.</li></ol></details>
+          <details><summary>File Master tidak sengaja terhapus dari Drive</summary><ol><li>Buka Google Drive → Sampah.</li><li>Jika file masih ada, pulihkan file asli.</li><li>Jangan membuat Master baru jika file asli masih dapat dipulihkan.</li></ol></details>
+          <details><summary>File Master hilang permanen</summary><ol><li>Pilih backup sehat dan klik <b>Siapkan Salinan</b>.</li><li>Buka salinan pemulihan dan periksa data.</li><li>Gunakan salinan sehat sebagai bahan pemulihan darurat.</li><li>Hubungi pengelola sistem/IT untuk menghubungkan backend ke file baru. Jangan mengubah koneksi sendiri.</li></ol></details>
+        </div>
+        <div class="system-alert info"><strong>Prinsip aman</strong><span>Jangan pernah menimpa seluruh database hanya untuk memperbaiki Master. Pemulihan Master hanya menyentuh Master Data, Akun & PIN, atau Wilayah Layanan yang dipilih.</span></div>
       </div>`;
 
     document.getElementById('backupNow')?.addEventListener('click',openBackupModal_);
     document.getElementById('backupSchedule')?.addEventListener('click',ensureBackupSchedule_);
     document.getElementById('openBackupFolder')?.addEventListener('click',() => window.open(r.folders.root.url,'_blank','noopener'));
+    document.getElementById('openLastRecovery')?.addEventListener('click',() => { if (lastRecovery?.recoveryUrl) window.open(lastRecovery.recoveryUrl,'_blank','noopener'); });
+    document.getElementById('applyMasterProtection')?.addEventListener('click',applyMasterProtections_);
     root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
+    root.querySelectorAll('[data-open-recovery]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openRecovery,'_blank','noopener')));
     root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName)));
+    root.querySelectorAll('[data-restore-master]').forEach(button => button.addEventListener('click',() => openRestoreMaster_(button.dataset.restoreMaster,button.dataset.restoreName,recoverableSheets)));
   }
 
   function openBackupModal_() {
@@ -206,7 +277,7 @@ export function createAdminModule(ctx) {
       const button = document.getElementById('backupSave');
       button.disabled = true;
       try {
-        const response = await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
+        await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
         ctx.closeModal();
         ctx.showToast('Backup Master berhasil dibuat.','success');
         const health = await api().adminResilienceHealth(token());
@@ -217,10 +288,10 @@ export function createAdminModule(ctx) {
   }
 
   async function ensureBackupSchedule_() {
-    const ok = await ctx.confirmAction({title:'Aktifkan backup otomatis?',message:'Sistem akan memastikan trigger backup harian aktif. Tidak ada data transaksi yang diubah.',confirmLabel:'Aktifkan',tone:'info'});
-    if (!ok) return;
+    const pin = await requestAdminPin_({title:'Aktifkan backup otomatis?',message:'Sistem akan memastikan jadwal backup otomatis aktif. Tidak ada data transaksi yang diubah.',confirmLabel:'Aktifkan'});
+    if (!pin) return;
     try {
-      await api().adminEnsureBackupSchedule(token());
+      await api().adminEnsureBackupSchedule(token(),pin);
       const health = await api().adminResilienceHealth(token());
       state.resilience = health.data?.health || null;
       drawArchive();
@@ -229,16 +300,55 @@ export function createAdminModule(ctx) {
   }
 
   async function prepareRecovery_(backupId,backupName) {
-    const ok = await ctx.confirmAction({title:'Siapkan salinan recovery?',message:`Sistem akan menyalin ${backupName || 'backup terpilih'} ke folder RECOVERY. Master aktif tidak akan diubah.`,confirmLabel:'Siapkan Recovery',tone:'warning'});
-    if (!ok) return;
+    const pin = await requestAdminPin_({title:'Siapkan salinan pemulihan?',message:`Sistem akan menyalin ${backupName || 'backup terpilih'} ke folder RECOVERY. Master aktif tidak akan diubah.`,confirmLabel:'Siapkan Salinan'});
+    if (!pin) return;
     try {
-      const response = await api().adminPrepareRecovery(token(),backupId);
+      const response = await api().adminPrepareRecovery(token(),backupId,pin);
       const recovery = response.data?.recovery || null;
-      ctx.showToast('Salinan recovery berhasil dibuat.','success');
+      ctx.showToast('Salinan pemulihan berhasil dibuat.','success');
       if (recovery?.url) window.open(recovery.url,'_blank','noopener');
       const health = await api().adminResilienceHealth(token());
       state.resilience = health.data?.health || null;
       drawArchive();
+    } catch (error) { ctx.showToast(error.message,'error'); }
+  }
+
+  function openRestoreMaster_(backupId,backupName,availableSheets) {
+    const sheets = Array.isArray(availableSheets) && availableSheets.length ? availableSheets : ['MASTER_DATA','AKSES','MASTER_WILAYAH'];
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PEMULIHAN MASTER</div><h3>Pulihkan dari Backup</h3><p>${esc(backupName || 'Backup terpilih')}</p></div><button class="modal-x" data-modal-close>×</button></div>
+      <div class="system-alert warning"><strong>Hanya bagian Master yang dipilih akan dipulihkan.</strong><span>DATABASE transaksi pasien tidak dikembalikan ke masa lalu. Sistem otomatis membuat backup pengaman sebelum pemulihan.</span></div>
+      <div class="field"><label>Pilih bagian yang akan dipulihkan <b>*</b></label><div class="master-restore-options">${sheets.map(name=>`<label class="check-row"><input type="checkbox" value="${esc(name)}" data-master-sheet><span><strong>${esc(masterSheetLabel(name))}</strong><small>${esc(name)}</small></span></label>`).join('')}</div></div>
+      <div class="field"><label for="restoreAdminPin">PIN Admin <b>*</b></label><input id="restoreAdminPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN Admin"></div>
+      <div id="restoreMasterMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="restoreMasterSave" class="danger-btn">Ya, Pulihkan Master</button></div>` ,{wide:true});
+    document.getElementById('restoreMasterSave')?.addEventListener('click',async() => {
+      const button = document.getElementById('restoreMasterSave');
+      const selected = [...document.querySelectorAll('[data-master-sheet]:checked')].map(input => input.value);
+      const pin = String(document.getElementById('restoreAdminPin')?.value || '').trim();
+      const msg = document.getElementById('restoreMasterMsg');
+      if (!selected.length) { msg.innerHTML = '<div class="alert error">Pilih minimal satu bagian Master.</div>'; return; }
+      if (!pin) { msg.innerHTML = '<div class="alert error">PIN Admin wajib diisi.</div>'; return; }
+      button.disabled = true;
+      try {
+        const response = await api().adminRestoreMaster(token(),backupId,selected,pin);
+        const restore = response.data?.restore || {};
+        ctx.closeModal();
+        ctx.showToast(`Pemulihan Master selesai: ${(restore.sheets||[]).map(masterSheetLabel).join(', ')}.`,'success',6000);
+        const health = await api().adminResilienceHealth(token());
+        state.resilience = health.data?.health || null;
+        drawArchive();
+      } catch (error) { msg.innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
+    });
+  }
+
+  async function applyMasterProtections_() {
+    const pin = await requestAdminPin_({title:'Perbaiki proteksi Master?',message:'Sistem akan menerapkan ulang proteksi edit manual pada sheet kritis. Operasional aplikasi tetap dapat berjalan melalui backend.',confirmLabel:'Terapkan Proteksi'});
+    if (!pin) return;
+    try {
+      await api().adminApplyProtections(token(),pin);
+      const health = await api().adminResilienceHealth(token());
+      state.resilience = health.data?.health || null;
+      drawArchive();
+      ctx.showToast('Proteksi Master diperbarui.','success');
     } catch (error) { ctx.showToast(error.message,'error'); }
   }
 
