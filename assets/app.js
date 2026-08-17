@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc1';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc1';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc1';
-import { createCourierModule } from './courier.js?v=1.0.0-rc1';
-import { createAdminModule } from './admin.js?v=1.0.0-rc1';
-import { createManagementModule } from './management.js?v=1.0.0-rc1';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc2';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc2';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc2';
+import { createCourierModule } from './courier.js?v=1.0.0-rc2';
+import { createAdminModule } from './admin.js?v=1.0.0-rc2';
+import { createManagementModule } from './management.js?v=1.0.0-rc2';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -23,18 +23,42 @@ const state = {
 
 const NAV = {
   FARMASI: [
-    ['home','⌂','Beranda'],['registration','＋','Pendaftaran'],['today','▤','Hari Ini'],['verification','✓','Verifikasi'],['followup','↺','Tindak Lanjut'],['labels','▣','Label'],['account','●','Akun']
+    ['home','home','Beranda'],['registration','user-plus','Pendaftaran'],['today','calendar','Hari Ini'],['verification','badge-check','Verifikasi'],['followup','rotate','Tindak Lanjut'],['labels','tag','Label'],['account','user','Akun']
   ],
   KURIR: [
-    ['home','⌂','Beranda'],['ready','◎','Siap'],['tasks','➜','Tugas'],['history','↺','Riwayat'],['account','●','Akun']
+    ['home','home','Beranda'],['ready','package-check','Siap'],['tasks','truck','Tugas'],['history','history','Riwayat'],['account','user','Akun']
   ],
   ADMIN: [
-    ['home','⌂','Beranda'],['corrections','✎','Koreksi Data'],['archive','▣','Arsip'],['master','◆','Master'],['audit','≡','Audit'],['account','●','Akun']
+    ['home','home','Beranda'],['corrections','file-pen','Koreksi Data'],['archive','archive','Arsip'],['master','database','Master'],['audit','list-checks','Audit'],['account','user','Akun']
   ],
   MANAJEMEN: [
-    ['home','⌂','Ringkasan'],['performance','▥','Kinerja'],['areas','⌖','Wilayah'],['reports','▧','Laporan'],['account','●','Akun']
+    ['home','layout-dashboard','Ringkasan'],['performance','chart-column','Kinerja'],['areas','map-pin','Wilayah'],['reports','file-chart','Laporan'],['account','user','Akun']
   ]
 };
+
+function navIconSvg(name) {
+  const paths = {
+    'home':'<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/>',
+    'user-plus':'<circle cx="9" cy="8" r="3"/><path d="M3.5 20c.5-4 2.7-6 5.5-6s5 2 5.5 6"/><path d="M18 8v6M15 11h6"/>',
+    'calendar':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+    'badge-check':'<path d="m12 3 2.2 1.3 2.5-.1 1.2 2.2 2.2 1.2-.1 2.5 1.3 2.2-1.3 2.2.1 2.5-2.2 1.2-1.2 2.2-2.5-.1L12 21l-2.2-1.3-2.5.1-1.2-2.2-2.2-1.2.1-2.5L2.7 12 4 9.8l-.1-2.5 2.2-1.2 1.2-2.2 2.5.1L12 3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
+    'rotate':'<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/>',
+    'tag':'<path d="M20 13 13 20 4 11V4h7l9 9Z"/><circle cx="8.5" cy="8.5" r="1.2"/>',
+    'package-check':'<path d="m21 8-9-5-9 5v8l9 5 9-5V8Z"/><path d="m3.5 7.5 8.5 5 8.5-5M12 12.5V21"/><path d="m15.5 15 1.5 1.5 3-3"/>',
+    'truck':'<path d="M3 6h11v10H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+    'history':'<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6M12 7v5l3 2"/>',
+    'file-pen':'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 16l6-6 2 2-6 6-3 1z"/>',
+    'archive':'<path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/>',
+    'database':'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+    'list-checks':'<path d="m4 7 1.5 1.5L8 6M11 7h9M4 12l1.5 1.5L8 11M11 12h9M4 17l1.5 1.5L8 16M11 17h9"/>',
+    'layout-dashboard':'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    'chart-column':'<path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7M2 20h20"/>',
+    'map-pin':'<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
+    'file-chart':'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 17v-4M12 17V9M16 17v-6"/>',
+    'user':'<circle cx="12" cy="8" r="4"/><path d="M4 21c.7-5 3.4-7 8-7s7.3 2 8 7"/>'
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name] || paths.home}</svg>`;
+}
 
 const PAGE_META = {
   home:['Beranda','Ringkasan kegiatan'],
@@ -234,6 +258,7 @@ function clearLocalSession() {
 }
 
 function showLogin(message='') {
+  delete document.body.dataset.role;
   clearLocalSession();
   closeModal();
   $('appView').classList.add('hidden');
@@ -326,20 +351,21 @@ async function logout() {
 function buildNav() {
   const role = state.session.user.role;
   const items = NAV[role] || NAV.FARMASI;
-  $('sideNav').innerHTML = items.map(item => `<button class="nav-item" data-view="${item[0]}"><span class="nav-icon">${item[1]}</span>${escapeHtml(item[2])}<span class="nav-count-badge hidden" data-nav-badge="${item[0]}"></span></button>`).join('');
+  $('sideNav').innerHTML = items.map(item => `<button class="nav-item" data-view="${item[0]}"><span class="nav-icon">${navIconSvg(item[1])}</span>${escapeHtml(item[2])}<span class="nav-count-badge hidden" data-nav-badge="${item[0]}"></span></button>`).join('');
 
   let mobileItems;
   if (role === 'FARMASI') mobileItems = items.filter(item => item[0] !== 'account');
   else if (role === 'ADMIN') mobileItems = items.filter(item => item[0] !== 'account').slice(0,5);
   else mobileItems = items.slice(0,5);
   $('bottomNav').style.setProperty('--nav-count',mobileItems.length);
-  $('bottomNav').innerHTML = mobileItems.map(item => `<button data-view="${item[0]}"><span>${item[1]}</span>${escapeHtml(item[2])}<span class="nav-count-badge hidden" data-nav-badge="${item[0]}"></span></button>`).join('');
+  $('bottomNav').innerHTML = mobileItems.map(item => `<button data-view="${item[0]}"><span class="nav-mobile-icon">${navIconSvg(item[1])}</span>${escapeHtml(item[2])}<span class="nav-count-badge hidden" data-nav-badge="${item[0]}"></span></button>`).join('');
   document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click',() => openView(button.dataset.view)));
 }
 
 function showApp() {
   const user = state.session.user;
   user.role = String(user.role || '').trim().toUpperCase();
+  document.body.dataset.role = user.role;
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('sideUserName').textContent = user.name;
@@ -477,7 +503,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc1',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc2',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {

@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc1';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc2';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -289,13 +289,20 @@ export function createFarmasiModule(ctx) {
     updateAreaHint('reg');
   }
 
+  function incidentTime(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return esc(String(value));
+    return d.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}).replace('.',':');
+  }
+
   function farmasiIncidentBanner() {
     const incidents = state.activeIncidents || [];
     if (!incidents.length) return '';
-    const primary = incidents[0] || {};
-    const more = incidents.length > 1 ? ` • ${incidents.length - 1} kendala lain` : '';
-    const detail = String(primary.detail || '').trim();
-    return `<div class="farmasi-incident-banner"><div class="incident-icon">⚠</div><div><span>KENDALA KURIR AKTIF</span><strong>${esc(primary.type || 'Kendala operasional')}${more}</strong><p>${detail ? `${esc(detail)} • ` : ''}Pengantaran hari ini dapat mengalami keterlambatan.</p></div></div>`;
+    return `<div class="farmasi-incident-banner incident-stack"><div class="incident-stack-head"><div class="incident-icon">⚠</div><div><span>KENDALA KURIR AKTIF</span><strong>${incidents.length} kendala sedang berlangsung</strong><p>Pengantaran hari ini dapat mengalami keterlambatan.</p></div></div><div class="farmasi-incident-list">${incidents.map(item => {
+      const areas = Array.isArray(item.affectedAreas) && item.affectedAreas.length ? item.affectedAreas.join(', ') : 'Wilayah terdampak belum terpetakan';
+      return `<article><div class="farmasi-incident-name"><strong>${esc(item.courier || 'Kurir')}</strong><span>${esc(item.delayEstimate || 'Perkiraan belum diisi')}</span></div><b>${esc(item.type || 'Kendala operasional')}</b>${item.detail ? `<p>${esc(item.detail)}</p>` : ''}<small>Mulai ${incidentTime(item.startedAt)} • ${Number(item.affectedCount||0)} paket terdampak</small><small>${esc(areas)}</small></article>`;
+    }).join('')}</div></div>`;
   }
 
   async function renderHome() {
