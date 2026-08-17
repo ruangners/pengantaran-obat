@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc4';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc5';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -16,6 +16,12 @@ export function createManagementModule(ctx) {
     lastLoadedKey: '',
     performanceTab: 'pharmacy'
   };
+
+  function setManagementPageMode(mode = '') {
+    const el = page();
+    if (!el) return;
+    el.classList.toggle('management-summary-page', mode === 'summary');
+  }
 
   function localDateKey(date = new Date()) {
     const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -205,6 +211,7 @@ export function createManagementModule(ctx) {
   }
 
   async function renderHome() {
+    setManagementPageMode('summary');
     page().innerHTML = `${hero('Ringkasan Eksekutif','Gambaran singkat layanan pengantaran obat untuk pemantauan dan pengambilan keputusan.')}<section class="section">${filterBar()}<div id="mgmtHome" class="mgmt-loading">Memuat data…</div></section>`;
     bindFilter(() => loadHome(true));
     document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawHome);
@@ -229,6 +236,7 @@ export function createManagementModule(ctx) {
 
 
   async function renderPerformance() {
+    setManagementPageMode();
     page().innerHTML = `${hero('Kinerja Layanan & Petugas','Aktivitas Farmasi dan Kurir pada periode yang dipilih.','KINERJA')}<section class="section">${filterBar()}<div class="segmented-tabs performance-tabs"><button data-performance-tab="pharmacy" class="${state.performanceTab==='pharmacy'?'active':''}">Farmasi</button><button data-performance-tab="courier" class="${state.performanceTab==='courier'?'active':''}">Kurir</button></div><div id="mgmtPerformance" class="mgmt-loading">Memuat kinerja…</div></section>`;
     bindFilter(() => loadPerformance(true));
     document.querySelectorAll('[data-performance-tab]').forEach(button => button.onclick = () => { state.performanceTab = button.dataset.performanceTab; document.querySelectorAll('[data-performance-tab]').forEach(x => x.classList.toggle('active', x.dataset.performanceTab === state.performanceTab)); drawPerformance(); });
@@ -264,6 +272,7 @@ export function createManagementModule(ctx) {
   }
 
   async function renderAreas() {
+    setManagementPageMode();
     page().innerHTML = `${hero('Wilayah Pengantaran','Sebaran pendaftaran, pengantaran terkirim, dan alasan gagal berdasarkan wilayah.','WILAYAH')}<section class="section">${filterBar()}<div id="mgmtAreas" class="mgmt-loading">Memuat wilayah…</div></section>`;
     bindFilter(() => loadAreas(true));
     document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawAreas);
@@ -276,6 +285,7 @@ export function createManagementModule(ctx) {
   }
 
   async function renderReports() {
+    setManagementPageMode();
     page().innerHTML = `${hero('Laporan','Siapkan ringkasan periode untuk dicetak atau disimpan sebagai PDF.','LAPORAN')}<section class="section">${filterBar()}<div id="mgmtReports" class="mgmt-loading">Menyiapkan laporan…</div></section>`;
     bindFilter(() => loadReports(true));
     document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawReports);

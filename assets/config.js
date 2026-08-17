@@ -1,9 +1,9 @@
-import { DEPLOYMENT_CONFIG } from './deployment.js?v=1.0.0-rc4';
+import { DEPLOYMENT_CONFIG } from './deployment.js?v=1.0.0-rc5';
 
 export const APP_CONFIG = Object.freeze({
   appName: 'Pengantaran Obat Gratis',
   organization: 'RSUD Provinsi Nusa Tenggara Barat',
-  version: '1.0.0-rc4',
+  version: '1.0.0-rc5',
   apiContract: 'ANTAROBAT-V1',
   backendUrl: String(DEPLOYMENT_CONFIG.backendUrl || '').trim(),
   backendStorageKey: 'antarobat_backend_url',
