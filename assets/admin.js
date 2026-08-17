@@ -1,5 +1,5 @@
 export function createAdminModule(ctx) {
-  const state = {loaded:false,summary:{},archive:null,master:{},audit:[],metadata:null,rows:[],search:''};
+  const state = {loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''};
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
   const token = () => ctx.getToken();
@@ -7,7 +7,7 @@ export function createAdminModule(ctx) {
   const statusOptions = ['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
 
   function resetForLogout() {
-    Object.assign(state,{loaded:false,summary:{},archive:null,master:{},audit:[],metadata:null,rows:[],search:''});
+    Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''});
   }
 
   function fmt(value) { return esc(value || '-'); }
@@ -23,6 +23,8 @@ export function createAdminModule(ctx) {
   function badge(text,kind='neutral') { return `<span class="status-badge ${kind}">${esc(text || '-')}</span>`; }
   function metric(label,value,note='') { return `<div class="card metric-card"><div class="metric-top"><span>${esc(label)}</span></div><div class="metric-value">${esc(value)}</div>${note?`<div class="metric-note">${esc(note)}</div>`:''}</div>`; }
   function countArray(value) { return Array.isArray(value) ? value.length : 0; }
+  function fmtDateTime(value) { if (!value) return '-'; const d = new Date(value); return Number.isNaN(d.getTime()) ? esc(value) : esc(new Intl.DateTimeFormat('id-ID',{dateStyle:'medium',timeStyle:'short'}).format(d)); }
+  function backupKindLabel(kind) { return ({DAILY:'Harian',MONTHLY:'Bulanan',PRECHANGE:'Sebelum Perubahan',RECOVERY:'Recovery'})[kind] || kind || '-'; }
 
   async function bootstrap(force=false) {
     if (state.loaded && !force) return state;
@@ -30,6 +32,7 @@ export function createAdminModule(ctx) {
     const data = response.data || {};
     state.summary = data.summary || {};
     state.archive = data.archive || null;
+    state.resilience = data.resilience || null;
     state.master = data.master || {};
     state.audit = data.audit || [];
     state.metadata = data.metadata || null;
@@ -56,6 +59,7 @@ export function createAdminModule(ctx) {
     const missing = Number(s.missingMetadata || 0);
     root.innerHTML = `<div class="grid grid-4">${metric('Data Aktif',Number(s.activeRecords||0),'Masih dalam proses')}${metric('Metadata',Number(s.metadataRecords||0),missing?`${missing} perlu perhatian`:'Sinkron')}${metric('Riwayat Pengantaran',Number(s.deliveryHistoryRecords||0),'Catatan perjalanan pengiriman')}${metric('Audit',Number(s.auditRecords||0),'Aktivitas tercatat')}</div>
       ${missing?`<div class="system-alert warning"><strong>Metadata perlu perhatian</strong><span>${missing} data belum lengkap. Jalankan pemeriksaan metadata sebelum melakukan perubahan besar.</span></div>`:''}
+      ${drawBackupHomeAlert_()}
       <div class="admin-action-grid clean-admin-actions">
         <button data-go="corrections" class="admin-action-card"><b>✎ Koreksi Data</b><span>Cari data dan perbaiki status bila terjadi salah input.</span></button>
         <button data-go="archive" class="admin-action-card"><b>▣ Arsip</b><span>Periksa kesehatan arsip dan antrean pemeliharaan.</span></button>
@@ -63,6 +67,14 @@ export function createAdminModule(ctx) {
         <button data-go="audit" class="admin-action-card"><b>≡ Audit</b><span>Telusuri jejak perubahan dan aktivitas.</span></button>
       </div>`;
     root.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click',() => ctx.navigate(button.dataset.go)));
+  }
+
+  function drawBackupHomeAlert_() {
+    const r = state.resilience || {};
+    if (!r || !Object.keys(r).length) return `<div class="system-alert warning"><strong>Backup Master belum dikonfigurasi</strong><span>Buka menu Arsip untuk mengaktifkan backup otomatis.</span></div>`;
+    const safe = String(r.status || '') === 'AMAN';
+    const last = r.lastDaily ? fmtDateTime(r.lastDaily.createdAt) : 'Belum tersedia';
+    return `<div class="system-alert ${safe?'success':'warning'}"><strong>Backup Master: ${esc(r.status || 'Belum siap')}</strong><span>Backup harian terakhir: ${last}. ${safe?'Cadangan otomatis aktif.':'Periksa menu Arsip untuk detail.'}</span></div>`;
   }
 
   async function renderCorrections() {
@@ -128,11 +140,15 @@ export function createAdminModule(ctx) {
   }
 
   async function renderArchive() {
-    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ARSIP</div><h1>Kesehatan Arsip</h1><p>Pantau retensi dan proses pemeliharaan data lama.</p></div><div class="hero-actions"><button id="archiveRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="archiveBody"><div class="inline-loading">Memuat…</div></section>`;
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ARSIP & BACKUP</div><h1>Ketahanan Data</h1><p>Pantau arsip, backup otomatis, dan siapkan salinan recovery tanpa mengubah Master aktif.</p></div><div class="hero-actions"><button id="archiveRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="archiveBody"><div class="inline-loading">Memuat…</div></section>`;
     const load = async() => {
       try {
-        const response = await api().adminArchiveHealth(token());
-        state.archive = response.data?.health || null;
+        const [archiveResponse,resilienceResponse] = await Promise.all([
+          api().adminArchiveHealth(token()),
+          api().adminResilienceHealth(token())
+        ]);
+        state.archive = archiveResponse.data?.health || null;
+        state.resilience = resilienceResponse.data?.health || null;
         drawArchive();
       } catch (error) { document.getElementById('archiveBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
     };
@@ -146,7 +162,84 @@ export function createAdminModule(ctx) {
     const a = state.archive || {};
     const queue = a.queue || {};
     const config = a.config || {};
-    root.innerHTML = `<div class="grid grid-4">${metric('Retensi',`${Number(config.retentionDays||120)} hari`,'Data aktif')}${metric('Menunggu Arsip',Number(queue.waiting||0),'Antrean')}${metric('Gagal Arsip',Number(queue.failed||0),'Perlu perhatian')}${metric('Tahun Arsip',Number(a.registry?.length||a.years?.length||0),'Terdeteksi')}</div><div class="content-card technical-panel"><h3>Informasi Arsip</h3><pre>${esc(JSON.stringify({config:a.config||{},queue:a.queue||{},lastRun:a.lastRun||a.lastArchiveRun||null},null,2))}</pre></div>`;
+    const r = state.resilience || {};
+    const counts = r.counts || {};
+    const trigger = r.trigger || {};
+    const lastDaily = r.lastDaily || null;
+    const lastMonthly = r.lastMonthly || null;
+    const backupStatus = String(r.status || 'BELUM SIAP');
+    const recent = Array.isArray(r.recent) ? r.recent : [];
+    const warnings = Array.isArray(r.warnings) ? r.warnings : [];
+    const secondary = r.secondary || {};
+
+    root.innerHTML = `
+      <div class="admin-section-title"><div><span class="eyebrow">ARSIP TRANSAKSI</span><h2>Retensi & Arsip Tahunan</h2></div></div>
+      <div class="grid grid-4">${metric('Retensi',`${Number(config.retentionDays||120)} hari`,'Data aktif')}${metric('Menunggu Arsip',Number(queue.waiting||0),'Antrean')}${metric('Gagal Arsip',Number(queue.failed||0),'Perlu perhatian')}${metric('Tahun Arsip',Number(a.registry?.length||a.years?.length||0),'Terdeteksi')}</div>
+      <div class="content-card technical-panel"><h3>Informasi Arsip</h3><pre>${esc(JSON.stringify({config:a.config||{},queue:a.queue||{},lastRun:a.lastRun||a.lastArchiveRun||null},null,2))}</pre></div>
+
+      <div class="admin-section-title resilience-heading"><div><span class="eyebrow">BACKUP MASTER</span><h2>Backup & Recovery</h2><p>Salinan utuh Spreadsheet dibuat otomatis. Recovery selalu dibuat sebagai salinan terpisah untuk diperiksa terlebih dahulu.</p></div><div class="admin-section-actions"><button id="backupNow" class="primary-btn">Backup Master Sekarang</button>${trigger.installed?'':`<button id="backupSchedule" class="secondary-btn">Aktifkan Backup Otomatis</button>`}</div></div>
+      <div class="grid grid-4">
+        ${metric('Status Backup',backupStatus,trigger.installed?'Otomatis aktif':'Trigger belum aktif')}
+        ${metric('Backup Harian',Number(counts.daily||0),lastDaily?`Terakhir ${fmtDateTime(lastDaily.createdAt)}`:'Belum tersedia')}
+        ${metric('Backup Bulanan',Number(counts.monthly||0),lastMonthly?`Terakhir ${fmtDateTime(lastMonthly.createdAt)}`:'Belum tersedia')}
+        ${metric('Sebelum Perubahan',Number(counts.prechange||0),'Backup manual')}
+      </div>
+      ${warnings.length?`<div class="system-alert warning"><strong>Backup perlu perhatian</strong><span>${warnings.map(esc).join(' • ')}</span></div>`:`<div class="system-alert success"><strong>Backup Master aman</strong><span>Backup otomatis aktif dan cadangan terbaru tersedia.</span></div>`}
+      <div class="content-card resilience-config-card">
+        <div class="resilience-config-row"><div><span>Jadwal otomatis</span><strong>${esc(trigger.schedule || '-')}</strong></div><div><span>Retensi backup</span><strong>${Number(r.config?.dailyKeep||30)} harian • ${Number(r.config?.monthlyKeep||12)} bulanan</strong></div><div><span>Cadangan lokasi kedua</span><strong>${secondary.configured?(secondary.error?'Perlu perhatian':'Aktif'):'Belum dikonfigurasi'}</strong></div>${r.folders?.root?.url?`<button id="openBackupFolder" class="mini-btn">Buka Folder Backup</button>`:''}</div>
+      </div>
+      <div class="content-card">
+        <div class="card-head-row"><div><h3>Backup Terbaru</h3><p>Pilih backup yang sehat untuk menyiapkan salinan recovery. Master aktif tidak pernah ditimpa otomatis.</p></div></div>
+        ${recent.length?`<div class="table-scroll"><table class="data-table responsive-table"><thead><tr><th>Jenis</th><th>Nama File</th><th>Dibuat</th><th>Aksi</th></tr></thead><tbody>${recent.map(item=>`<tr><td data-label="Jenis"><strong>${esc(backupKindLabel(item.kind))}</strong></td><td data-label="Nama File"><span class="backup-file-name">${esc(item.name)}</span></td><td data-label="Dibuat">${fmtDateTime(item.createdAt)}</td><td data-label="Aksi"><div class="row-actions">${item.url?`<button class="mini-btn" data-open-backup="${esc(item.url)}">Buka</button>`:''}<button class="mini-btn primary-soft" data-recovery="${esc(item.id)}" data-recovery-name="${esc(item.name)}">Siapkan Recovery</button></div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state"><h3>Belum ada backup</h3><p>Aktifkan backup otomatis atau buat backup manual.</p></div>'}
+      </div>`;
+
+    document.getElementById('backupNow')?.addEventListener('click',openBackupModal_);
+    document.getElementById('backupSchedule')?.addEventListener('click',ensureBackupSchedule_);
+    document.getElementById('openBackupFolder')?.addEventListener('click',() => window.open(r.folders.root.url,'_blank','noopener'));
+    root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
+    root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName)));
+  }
+
+  function openBackupModal_() {
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">BACKUP MASTER</div><h3>Buat Backup Sekarang</h3><p>Gunakan sebelum perubahan penting pada Master Spreadsheet.</p></div><button class="modal-x" data-modal-close>×</button></div><div class="field"><label for="backupNote">Catatan <span class="optional">opsional</span></label><textarea id="backupNote" rows="3" placeholder="Contoh: sebelum menambah pegawai atau mengganti PIN"></textarea></div><div id="backupModalMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="backupSave" class="primary-btn">Buat Backup</button></div>`);
+    document.getElementById('backupSave')?.addEventListener('click',async() => {
+      const button = document.getElementById('backupSave');
+      button.disabled = true;
+      try {
+        const response = await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
+        ctx.closeModal();
+        ctx.showToast('Backup Master berhasil dibuat.','success');
+        const health = await api().adminResilienceHealth(token());
+        state.resilience = health.data?.health || null;
+        drawArchive();
+      } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
+    });
+  }
+
+  async function ensureBackupSchedule_() {
+    const ok = await ctx.confirmAction({title:'Aktifkan backup otomatis?',message:'Sistem akan memastikan trigger backup harian aktif. Tidak ada data transaksi yang diubah.',confirmLabel:'Aktifkan',tone:'info'});
+    if (!ok) return;
+    try {
+      await api().adminEnsureBackupSchedule(token());
+      const health = await api().adminResilienceHealth(token());
+      state.resilience = health.data?.health || null;
+      drawArchive();
+      ctx.showToast('Backup otomatis aktif.','success');
+    } catch (error) { ctx.showToast(error.message,'error'); }
+  }
+
+  async function prepareRecovery_(backupId,backupName) {
+    const ok = await ctx.confirmAction({title:'Siapkan salinan recovery?',message:`Sistem akan menyalin ${backupName || 'backup terpilih'} ke folder RECOVERY. Master aktif tidak akan diubah.`,confirmLabel:'Siapkan Recovery',tone:'warning'});
+    if (!ok) return;
+    try {
+      const response = await api().adminPrepareRecovery(token(),backupId);
+      const recovery = response.data?.recovery || null;
+      ctx.showToast('Salinan recovery berhasil dibuat.','success');
+      if (recovery?.url) window.open(recovery.url,'_blank','noopener');
+      const health = await api().adminResilienceHealth(token());
+      state.resilience = health.data?.health || null;
+      drawArchive();
+    } catch (error) { ctx.showToast(error.message,'error'); }
   }
 
   async function renderMaster() {

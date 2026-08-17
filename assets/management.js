@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc5';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc6';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();

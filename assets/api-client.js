@@ -237,6 +237,10 @@ export class PengantaranApi {
   adminRows(token, search = '') { return this._read('admin.search', String(token || ''), String(search || '')); }
   adminUpdateStatus(token, id, status, note = '') { return this._mutate('admin.correctStatus', String(token || ''), String(id || ''), String(status || ''), String(note || '')); }
   adminArchiveHealth(token) { return this._read('admin.archiveHealth', String(token || '')); }
+  adminResilienceHealth(token) { return this._read('admin.resilienceHealth', String(token || '')); }
+  adminBackupNow(token, note = '') { return this._mutate('admin.backupNow', String(token || ''), String(note || '')); }
+  adminPrepareRecovery(token, backupId) { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || '')); }
+  adminEnsureBackupSchedule(token) { return this._mutate('admin.ensureBackupSchedule', String(token || '')); }
   adminRefreshMaster(token) { return this._read('admin.refreshMaster', String(token || '')); }
   adminAuditRows(token, limit = 100) { return this._read('admin.audit', String(token || ''), Number(limit || 100)); }
   deliveryHistory(token, id) { return this._read('admin.deliveryHistory', String(token || ''), String(id || '')); }
