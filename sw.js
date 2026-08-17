@@ -1,4 +1,4 @@
-const APP_VERSION = '1.0.0-rc7';
+const APP_VERSION = '1.0.0-rc8';
 const CACHE = `antar-obat-${APP_VERSION}`;
 const STATIC = [
   './',
