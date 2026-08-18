@@ -242,6 +242,7 @@ export class PengantaranApi {
   adminPrepareRecovery(token, backupId, adminPin = '') { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || ''), String(adminPin || '')); }
   adminRestoreMaster(token, backupId, sheets = [], adminPin = '') { return this._mutate('admin.restoreMaster', String(token || ''), String(backupId || ''), Array.isArray(sheets) ? sheets : [], String(adminPin || '')); }
   adminRestoreMissingSheet(token, sourceId, sheetName, adminPin = '') { return this._mutate('admin.restoreMissingSheet', String(token || ''), String(sourceId || ''), String(sheetName || ''), String(adminPin || '')); }
+  adminRestoreSheetContent(token, sourceId, sheetName, adminPin = '') { return this._mutate('admin.restoreSheetContent', String(token || ''), String(sourceId || ''), String(sheetName || ''), String(adminPin || '')); }
   adminCompareMasterCells(token, sourceId, sheetName) { return this._read('admin.compareMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || '')); }
   adminRestoreMasterCells(token, sourceId, sheetName, cells = [], adminPin = '') { return this._mutate('admin.restoreMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || ''), Array.isArray(cells) ? cells : [], String(adminPin || '')); }
   adminEmergencyRestore(token, sourceId, adminPin = '', acknowledged = false) { return this._mutate('admin.emergencyRestore', String(token || ''), String(sourceId || ''), String(adminPin || ''), acknowledged === true); }

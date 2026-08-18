@@ -251,3 +251,6 @@ body[data-role]{--role-accent:#0a6c76;--role-accent-soft:#eaf4f5}
 #archiveBody .recovery-guide-card{margin-bottom:4px}
 @media(max-width:900px){.lab-facts{grid-template-columns:1fr 1fr}.cell-diff-list{grid-template-columns:1fr}.structure-issue{align-items:flex-start}}
 @media(max-width:650px){#archiveBody>.content-card{padding:16px}.lab-facts{grid-template-columns:1fr}.structure-issue{display:block}.structure-issue .mini-btn{margin-top:10px;width:100%}.cell-recovery-controls,.inline-form{display:grid;grid-template-columns:1fr}.cell-recovery-controls select,.inline-form select{min-width:0;width:100%}}
+.data-health-card{border-left:3px solid #6a7f89}.data-health-card.warning-card{background:#fffdf8}
+.emergency-recovery-card{border-left:3px solid #4b6876}.emergency-recovery-card.danger-card{border-left-color:#b54149;background:#fffafa}
+.structure-issue small{display:block;color:#7d8f97;font-size:9px;margin-top:4px;line-height:1.45}
