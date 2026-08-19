@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc14';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc14a';
 
 export function createFarmasiModule(ctx) {
   const state = {
