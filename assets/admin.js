@@ -264,11 +264,15 @@ export function createAdminModule(ctx) {
     const protection = r.protection || {};
     const structure = r.structure || {};
     const missingSheets = Array.isArray(structure.missing) ? structure.missing : [];
+    const damagedSheets = Array.isArray(structure.damaged) ? structure.damaged : [];
+    const structureIssues = [...missingSheets,...damagedSheets];
+    const structureIssueNames = new Set(structureIssues.map(item=>String(item.name||'')));
     const dataHealth = r.dataHealth || {};
     const dataIssues = Array.isArray(dataHealth.issues) ? dataHealth.issues : [];
     const lastRecovery = r.lastRecovery || null;
     const lastRestore = r.lastMasterRestore || null;
     const lastSystemRestore = r.lastSystemRestore || null;
+    const lastStructureRestore = r.lastStructureRestore || null;
     const lastCellRestore = r.lastCellRestore || null;
     const lastContentRestore = r.lastContentRestore || null;
     const recoverableSheets = Array.isArray(r.recoverableMasterSheets) ? r.recoverableMasterSheets : [];
@@ -278,26 +282,37 @@ export function createAdminModule(ctx) {
     const restoreSummary = [
       lastRestore ? `<div class="system-alert success"><strong>Pemulihan Master terakhir berhasil</strong><span>${fmtDateTime(lastRestore.at)} • ${esc((lastRestore.sheets || []).map(masterSheetLabel).join(', ') || '-')}</span></div>` : '',
       lastSystemRestore ? `<div class="system-alert success"><strong>Pemulihan sheet sistem terakhir berhasil</strong><span>${fmtDateTime(lastSystemRestore.at)} • ${esc((lastSystemRestore.sheet || (lastSystemRestore.sheets||[]).join(', ')) || '-')}</span></div>` : '',
+      lastStructureRestore ? `<div class="system-alert success"><strong>Pemulihan struktur sheet terakhir berhasil</strong><span>${fmtDateTime(lastStructureRestore.at)} • ${esc(systemSheetLabel(lastStructureRestore.sheet || '-'))}${lastStructureRestore.mode==='FULL_SHEET_FROM_HEALTHY_BACKUP'?` • header dan isi dipulihkan`:''}</span></div>` : '',
       lastCellRestore ? `<div class="system-alert success"><strong>Pemulihan cell terakhir berhasil</strong><span>${fmtDateTime(lastCellRestore.at)} • ${esc(lastCellRestore.sheet || '-')} • ${esc((lastCellRestore.cells||[]).join(', '))}</span></div>` : '',
       lastContentRestore ? `<div class="system-alert success"><strong>Pemulihan isi sheet terakhir berhasil</strong><span>${fmtDateTime(lastContentRestore.at)} • ${esc(systemSheetLabel(lastContentRestore.sheet || '-'))} • ${Number(lastContentRestore.restoredRows||0)} data dikembalikan</span></div>` : ''
     ].join('');
 
     const fileStateBlock = masterFile.trashed ? `<div class="content-card structure-health-card warning-card"><div class="card-head-row"><div><span class="eyebrow">FILE MASTER</span><h3>⚠ File Master berada di Sampah Drive</h3><p>Pulihkan file asli terlebih dahulu. Ini lebih aman daripada membuat Master baru dari backup.</p></div><button id="restoreProductionTrash" class="warning-btn">Pulihkan File Asli</button></div></div>` : '';
-    const structureCard = `<div class="content-card structure-health-card ${missingSheets.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN STRUKTUR</span><h3>${missingSheets.length?`⚠ ${missingSheets.length} sheet sistem perlu dipulihkan`:'✓ Struktur sistem lengkap'}</h3><p>${missingSheets.length?'Sheet wajib yang hilang harus dipulihkan sebelum fungsi terkait digunakan.':'Semua sheet sistem kritis tersedia.'}</p></div><button id="refreshStructureHealth" class="mini-btn">Periksa Ulang</button></div><div class="protection-summary"><div><span>Status</span><strong>${missingSheets.length?'PERLU PEMULIHAN':'AMAN'}</strong></div><div><span>Sheet wajib</span><strong>${Number(structure.found||0)} / ${Number(structure.total||0)}</strong></div><div><span>Sheet hilang</span><strong>${missingSheets.length}</strong></div></div>${missingSheets.length?`<div class="structure-issue-list">${missingSheets.map(item=>{
-      const source=item.recommendedSource||null;
+    const structureCard = `<div class="content-card structure-health-card ${structureIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN STRUKTUR</span><h3>${structureIssues.length?`⚠ ${structureIssues.length} struktur sheet perlu dipulihkan`:'✓ Struktur sistem lengkap'}</h3><p>${structureIssues.length?'Sheet hilang, header hilang, atau susunan kolom yang rusak harus dipulihkan sebelum fungsi terkait digunakan.':'Semua sheet sistem kritis tersedia dan struktur/header yang diperiksa sesuai.'}</p></div><button id="refreshStructureHealth" class="mini-btn">Periksa Ulang</button></div><div class="protection-summary"><div><span>Status</span><strong>${structureIssues.length?'PERLU PEMULIHAN':'AMAN'}</strong></div><div><span>Sheet wajib</span><strong>${Number(structure.found||0)} / ${Number(structure.total||0)}</strong></div><div><span>Masalah struktur</span><strong>${structureIssues.length}</strong></div></div>${structureIssues.length?`<div class="structure-issue-list">${structureIssues.map(item=>{
+      const source=item.recommendedSource||item.recommendedStructureSource||null;
       const critical=String(item.severity||'')==='CRITICAL';
-      const action=source ? (critical ? `<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-missing-sheet="${esc(item.name)}">Buka Pemulihan Darurat</button>` : `<button class="mini-btn warning-soft" data-restore-missing="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Sheet Sistem</button>`) : '<span class="status-badge failed">Backup sehat tidak ditemukan</span>';
-      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • ${critical?'data transaksi kritis':'sheet sistem'}${source?` • sumber: ${esc(source.name)}`:''}</span></div>${action}</div>`;
+      const isMissing=!item.exists;
+      const isMaster=String(item.severity||'')==='MASTER';
+      let action='<span class="status-badge failed">Backup sehat tidak ditemukan</span>';
+      if(source){
+        if(critical) action=`<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-structure-issue="${esc(item.name)}">Buka Pemulihan Darurat</button>`;
+        else if(isMaster) action=`<button class="mini-btn warning-soft" data-restore-master="${esc(source.id)}" data-restore-name="${esc(source.name||'Backup Sehat Terakhir')}">Pulihkan Master</button>`;
+        else if(isMissing) action=`<button class="mini-btn warning-soft" data-restore-missing="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Sheet Sistem</button>`;
+        else action=`<button class="mini-btn warning-soft" data-restore-structure="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Struktur Sheet</button>`;
+      }
+      const detail=isMissing?'Sheet tidak ditemukan.':`Header/struktur tidak sesuai${(item.missingHeaders||[]).length?` • header hilang: ${esc(item.missingHeaders.join(', '))}`:''}.`;
+      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • ${detail}${source?` • sumber: ${esc(source.name)}`:''}</span></div>${action}</div>`;
     }).join('')}</div>`:''}</div>`;
 
     const dataHealthCard = `<div class="content-card data-health-card ${dataIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN DATA</span><h3>${dataIssues.length?`⚠ ${dataIssues.length} data perlu diperiksa`:'✓ Data tidak menunjukkan kehilangan yang terdeteksi'}</h3><p>${dataIssues.length?'Sistem membandingkan kondisi aktif dengan cadangan sebelumnya untuk mendeteksi kehilangan data yang tidak wajar.':'Tidak ada penurunan data tidak wajar yang terdeteksi dari pemeriksaan otomatis.'}</p></div><button id="refreshDataHealth" class="mini-btn">Periksa Ulang</button></div>${dataIssues.length?`<div class="structure-issue-list">${dataIssues.map(item=>{
       const source=item.recommendedSource||null;
       const critical=String(item.severity||'')==='CRITICAL';
-      const action=source ? (critical ? `<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-data-issue="${esc(item.name)}">Pemulihan Darurat</button>` : `<button class="mini-btn warning-soft" data-restore-content="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Isi</button>`) : '<span class="status-badge failed">Backup Sehat Terakhir tidak ditemukan</span>';
+      const hasStructureIssue=structureIssueNames.has(String(item.name||''));
+      const action=hasStructureIssue ? '<span class="status-badge warning">Pulihkan struktur lebih dulu</span>' : (source ? (critical ? `<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-data-issue="${esc(item.name)}">Pemulihan Darurat</button>` : `<button class="mini-btn warning-soft" data-restore-content="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Isi</button>`) : '<span class="status-badge failed">Backup Sehat Terakhir tidak ditemukan</span>');
       return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>Data sekarang: ${Number(item.currentRows||0)} • Backup Sehat Terakhir: ${Number(item.backupRows||0)}${source?` • ${esc(source.name)}`:''}</span><small>${esc(item.message||'Data perlu diperiksa.')}</small></div>${action}</div>`;
     }).join('')}</div>`:''}</div>`;
 
-    const criticalStructureIssues = missingSheets.filter(item=>String(item.severity||'')==='CRITICAL');
+    const criticalStructureIssues = structureIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const criticalDataIssues = dataIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const emergencyNeeded = criticalStructureIssues.length || criticalDataIssues.length;
     const emergencyCard = `<div class="content-card emergency-recovery-card ${emergencyNeeded?'danger-card':''}"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN DARURAT</span><h3>${emergencyNeeded?'🚨 Data transaksi kritis perlu pemulihan':'✓ Tidak ada kondisi darurat'}</h3><p>${emergencyNeeded?'Gunakan hanya untuk DATABASE atau komponen transaksi kritis. Pemulihan dilakukan sebagai satu bundle agar relasi data tetap konsisten.':'DATABASE dan komponen transaksi kritis terdeteksi dalam kondisi tersedia.'}</p></div></div>${emergencyNeeded?`<div class="system-alert warning compact-alert"><strong>Jangan lanjutkan perubahan transaksi bila memungkinkan.</strong><span>Gunakan sumber yang direkomendasikan sistem dan periksa hasil consistency check setelah pemulihan.</span></div>`:''}</div>`;
@@ -339,7 +354,8 @@ export function createAdminModule(ctx) {
       <div class="content-card recovery-guide-card"><div class="card-head-row"><div><span class="eyebrow">PANDUAN PEMULIHAN CEPAT</span><h3>Apa masalah yang terjadi?</h3><p>Pilih situasi yang paling sesuai. Dashboard ini menjadi panduan utama Admin Data saat terjadi masalah.</p></div></div><div class="recovery-guide-grid">
         <details open><summary>Satu cell/field Master terhapus</summary><ol><li>Jangan melakukan perubahan lain pada cell tersebut.</li><li>Buka <b>Bandingkan Master dengan Backup</b>.</li><li>Pilih backup sebelum kesalahan.</li><li>Klik <b>Bandingkan</b> dan centang hanya cell yang ingin dikembalikan.</li><li>Masukkan PIN Admin. Sistem membuat backup pengaman sebelum pemulihan.</li><li>Ulangi <b>Bandingkan Master dengan Backup</b> untuk memastikan cell yang dipulihkan tidak lagi ditawarkan.</li></ol></details>
         <details><summary>Satu sheet sistem seperti KENDALA_KURIR terhapus</summary><ol><li>Jangan membuat sheet pengganti manual.</li><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Klik <b>Pulihkan Sheet Sistem</b> pada sheet yang hilang.</li><li>Masukkan PIN Admin.</li><li>Setelah selesai, periksa kembali <b>Kesehatan Struktur</b> dan <b>Proteksi Edit Manual</b>.</li></ol></details>
-        <details><summary>Sheet ada tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
+        <details><summary>Header/struktur sheet terhapus atau sheet kosong total</summary><ol><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Pastikan nama sheet masih ada tetapi header/struktur terdeteksi rusak.</li><li>Klik <b>Pulihkan Struktur Sheet</b>.</li><li>Masukkan PIN Admin.</li><li>Jika sheet kosong total, sistem mengembalikan header, format, dan isi dari <b>Backup Sehat Terakhir</b>. Jika data masih ada, sistem memulihkan struktur tanpa menimpa data yang masih tersisa.</li><li>Periksa kembali <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
+        <details><summary>Sheet ada, header masih utuh, tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Pastikan <b>Kesehatan Struktur</b> berstatus aman untuk sheet tersebut.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>DATABASE / riwayat transaksi terhapus</summary><ol><li>Hentikan perubahan transaksi bila memungkinkan.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Periksa <b>Checkpoint Transaksi</b> dan sumber yang direkomendasikan.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Periksa hasil consistency check dan gap waktu terhadap checkpoint.</li></ol></details>
         <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka bagian <b>Kesehatan Struktur</b> dan pastikan status file terdeteksi.</li><li>Jika tombol <b>Pulihkan File Asli</b> tersedia, gunakan tombol tersebut dan masukkan PIN Admin.</li><li>Jika file belum dapat diakses dari Dashboard, buka Google Drive → Sampah dan pulihkan file asli.</li><li>Kembali ke Dashboard lalu periksa <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>File Master hilang permanen</summary><ol><li>Gunakan backup sehat untuk membuat salinan pemulihan.</li><li>Periksa seluruh sheet dan konsistensi data.</li><li>Siapkan file pengganti dari backup sehat.</li><li>Relink backend hanya dilakukan pengelola sistem/IT. Jangan mengubah koneksi produksi tanpa pemeriksaan.</li></ol></details>
@@ -359,6 +375,7 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName,button)));
     root.querySelectorAll('[data-restore-master]').forEach(button => button.addEventListener('click',() => openRestoreMaster_(button.dataset.restoreMaster,button.dataset.restoreName,recoverableSheets)));
     root.querySelectorAll('[data-restore-missing]').forEach(button=>button.addEventListener('click',()=>restoreMissingProductionSheet_(button.dataset.restoreMissing,button.dataset.sourceId,button)));
+    root.querySelectorAll('[data-restore-structure]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetStructure_(button.dataset.restoreStructure,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore,button)));
   }
@@ -402,6 +419,23 @@ export function createAdminModule(ctx) {
       ctx.showToast(`${systemSheetLabel(sheetName)} berhasil dipulihkan.`,'success',6000);
       await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',7000); }
+    finally { setBusy(triggerButton,false); }
+  }
+
+  async function restoreProductionSheetStructure_(sheetName,sourceId,triggerButton=null) {
+    const issue = (state.resilience?.structure?.damaged || []).find(item=>String(item.name||'')===String(sheetName||''));
+    const pin = await requestAdminPin_({title:`Pulihkan struktur ${systemSheetLabel(sheetName)}?`,message:`Header/struktur ${sheetName} akan dipulihkan dari Backup Sehat Terakhir${issue?.recommendedSource?.name?` (${issue.recommendedSource.name})`:''}. Jika sheet kosong total, header, format, dan isi dari backup sehat akan dikembalikan.`,confirmLabel:'Ya, Pulihkan Struktur'});
+    if (!pin) return;
+    setBusy(triggerButton,true,'Memulihkan…');
+    try {
+      const response = await api().adminRestoreSheetStructure(token(),sourceId,sheetName,pin);
+      const restore = response.data?.restore || {};
+      const message = restore.mode === 'FULL_SHEET_FROM_HEALTHY_BACKUP'
+        ? `${systemSheetLabel(sheetName)} berhasil dipulihkan lengkap termasuk ${Number(restore.restoredRows||0)} data.`
+        : `Struktur ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menimpa data yang masih ada.`;
+      ctx.showToast(message,'success',8000);
+      await refreshResilienceState_({silent:true,preserveScroll:true});
+    } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
 
