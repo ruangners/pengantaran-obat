@@ -219,12 +219,16 @@ export function createAdminModule(ctx) {
     page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ARSIP & BACKUP</div><h1>Ketahanan Data</h1><p>Pantau arsip, backup otomatis, dan siapkan salinan pemulihan tanpa mengubah Master aktif.</p></div><div class="hero-actions"><button id="archiveRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="archiveBody"><div class="inline-loading">Memuat…</div></section>`;
     const load = async() => {
       try {
-        const [archiveResponse,resilienceResponse] = await Promise.all([
-          api().adminArchiveHealth(token()),
-          api().adminResilienceHealth(token())
-        ]);
-        state.archive = archiveResponse.data?.health || null;
+        const resilienceResponse = await api().adminResilienceHealth(token());
         state.resilience = resilienceResponse.data?.health || null;
+        state.archive = {unavailable:true,error:'Informasi arsip sedang dimuat. Bagian Backup & Pemulihan sudah dapat digunakan.'};
+        drawArchive();
+        try {
+          const archiveResponse = await api().adminArchiveHealth(token());
+          state.archive = archiveResponse.data?.health || null;
+        } catch (archiveError) {
+          state.archive = {unavailable:true,error:String(archiveError?.message || 'Informasi arsip sementara tidak tersedia.')};
+        }
         drawArchive();
       } catch (error) { document.getElementById('archiveBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
     };
@@ -239,6 +243,7 @@ export function createAdminModule(ctx) {
     const a = state.archive || {};
     const queue = a.queue || {};
     const config = a.config || {};
+    const archiveUnavailable = a.unavailable === true;
     const r = state.resilience || {};
     const counts = r.counts || {};
     const trigger = r.trigger || {};
@@ -261,7 +266,6 @@ export function createAdminModule(ctx) {
     const lastCellRestore = r.lastCellRestore || null;
     const lastContentRestore = r.lastContentRestore || null;
     const recoverableSheets = Array.isArray(r.recoverableMasterSheets) ? r.recoverableMasterSheets : [];
-    const lab = r.testLab || {};
     const masterFile = structure.file || {};
 
     const recoverySummary = lastRecovery ? `<div class="content-card recovery-status-card"><div class="card-head-row"><div><span class="eyebrow">SALINAN PEMULIHAN TERAKHIR</span><h3>✓ Siap diperiksa</h3><p>Salinan ini tidak mengubah Master aktif.</p></div>${lastRecovery.recoveryUrl?`<button class="mini-btn" id="openLastRecovery">Buka Salinan</button>`:''}</div><div class="recovery-facts"><div><span>Sumber</span><strong>${esc(lastRecovery.sourceName || '-')}</strong></div><div><span>Dibuat</span><strong>${fmtDateTime(lastRecovery.at)}</strong></div><div><span>Oleh</span><strong>${esc(lastRecovery.actor || '-')}</strong></div><div><span>Nama salinan</span><strong class="backup-file-name">${esc(lastRecovery.recoveryName || '-')}</strong></div></div></div>` : '';
@@ -293,16 +297,10 @@ export function createAdminModule(ctx) {
     const emergencyCard = `<div class="content-card emergency-recovery-card ${emergencyNeeded?'danger-card':''}"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN DARURAT</span><h3>${emergencyNeeded?'🚨 Data transaksi kritis perlu pemulihan':'✓ Tidak ada kondisi darurat'}</h3><p>${emergencyNeeded?'Gunakan hanya untuk DATABASE atau komponen transaksi kritis. Pemulihan dilakukan sebagai satu bundle agar relasi data tetap konsisten.':'DATABASE dan komponen transaksi kritis terdeteksi dalam kondisi tersedia.'}</p></div></div>${emergencyNeeded?`<div class="system-alert warning compact-alert"><strong>Jangan lanjutkan perubahan transaksi bila memungkinkan.</strong><span>Gunakan sumber yang direkomendasikan sistem dan periksa hasil consistency check setelah pemulihan.</span></div>`:''}</div>`;
 
     const sourceOptions = recent.map(item=>`<option value="${esc(item.id)}">${esc(backupKindLabel(item.kind))} • ${esc(item.name)}</option>`).join('');
-    const labWorking = lab?.working || {};
-    const labConfigured = Boolean(lab?.configured);
-    const labMissing = Array.isArray(labWorking?.structure?.missing) ? labWorking.structure.missing : [];
-    const labCard = `<div class="content-card recovery-lab-card"><div class="card-head-row"><div><span class="eyebrow">LAB UJI PEMULIHAN</span><h3>Uji Kerusakan Tanpa Menyentuh Produksi</h3><p>Sistem membuat baseline sehat dan clone kerja. Hapus cell/sheet pada clone kerja, lalu uji pemulihannya dari dashboard ini.</p></div>${labConfigured?'':`<button id="createRecoveryLab" class="primary-btn">Buat Clone Uji</button>`}</div>${labConfigured?`<div class="lab-facts"><div><span>Baseline</span><strong>${esc(lab.baseline?.name||'-')}</strong>${lab.baseline?.url?`<button class="text-btn" data-open-lab="${esc(lab.baseline.url)}">Buka</button>`:''}</div><div><span>Clone kerja</span><strong>${esc(labWorking.name||'-')}</strong>${labWorking.url?`<button class="text-btn" data-open-lab="${esc(labWorking.url)}">Buka & Uji</button>`:''}</div><div><span>Status file</span><strong>${labWorking.trashed?'DI SAMPAH':(labWorking.accessible?'AKTIF':'TIDAK DAPAT DIAKSES')}</strong></div><div><span>Struktur</span><strong>${labWorking.structure?.status||'-'}</strong></div></div>
-      <div class="row-actions recovery-lab-actions"><button id="refreshRecoveryLab" class="mini-btn">Periksa Ulang</button><button id="resetRecoveryLab" class="mini-btn secondary-soft">Reset Clone dari Baseline</button>${labWorking.trashed?`<button id="restoreLabTrash" class="mini-btn warning-soft">Pulihkan dari Sampah</button>`:''}</div>
-      ${!labWorking.accessible?`<div class="system-alert warning compact-alert"><strong>Clone kerja tidak dapat diakses</strong><span>Jika file hanya ada di Sampah, pulihkan dari Sampah. Jika file sudah hilang permanen, gunakan Reset Clone dari Baseline untuk mensimulasikan pembuatan file pengganti.</span></div>`:(labWorking.trashed?`<div class="system-alert warning compact-alert"><strong>Clone kerja berada di Sampah</strong><span>Klik Pulihkan dari Sampah untuk menguji pemulihan file asli.</span></div>`:(labMissing.length?`<div class="structure-issue-list lab-issues">${labMissing.map(item=>`<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • ${item.severity==='CRITICAL'?'uji pemulihan darurat':'uji restore sheet'}</span></div>${item.severity==='CRITICAL'?`<button class="mini-btn danger-soft" data-lab-emergency="1">Pulihkan Bundle Transaksi</button>`:`<button class="mini-btn warning-soft" data-lab-restore-sheet="${esc(item.name)}">Pulihkan Sheet</button>`}</div>`).join('')}</div>`:`<div class="system-alert info compact-alert"><strong>Clone siap diuji</strong><span>Untuk uji cell: hapus satu nilai pada MASTER_DATA/AKSES/MASTER_WILAYAH. Untuk uji sheet: hapus KENDALA. Untuk uji DATABASE: hapus DATABASE pada clone, jangan pada produksi.</span></div>`))}
-      <div class="lab-cell-tools"><strong>Uji cell/field Master</strong><div class="inline-form"><select id="labCellSheet"><option value="MASTER_DATA">Master Data</option><option value="AKSES">Akun & PIN</option><option value="MASTER_WILAYAH">Wilayah Layanan</option></select><button id="labCompareCells" class="mini-btn">Cari Cell yang Terhapus</button></div></div>`:''}</div>`;
 
     root.innerHTML = `
       <div class="admin-section-title"><div><span class="eyebrow">ARSIP TRANSAKSI</span><h2>Retensi & Arsip Tahunan</h2></div></div>
+      ${archiveUnavailable?`<div class="system-alert warning"><strong>Informasi arsip sementara tidak tersedia</strong><span>${esc(a.error || 'Pemulihan data mungkin sedang diperlukan. Bagian Backup & Pemulihan di bawah tetap dapat digunakan.')}</span></div>`:''}
       <div class="grid grid-4">${metric('Retensi',`${Number(config.retentionDays||120)} hari`,'Data aktif')}${metric('Menunggu Arsip',Number(queue.waiting||0),'Antrean')}${metric('Gagal Arsip',Number(queue.failed||0),'Perlu perhatian')}${metric('Tahun Arsip',Number(a.registry?.length||a.years?.length||0),'Terdeteksi')}</div>
       <div class="content-card technical-panel"><h3>Informasi Arsip</h3><pre>${esc(JSON.stringify({config:a.config||{},queue:a.queue||{},lastRun:a.lastRun||a.lastArchiveRun||null},null,2))}</pre></div>
 
@@ -331,14 +329,13 @@ export function createAdminModule(ctx) {
 
       ${recoveryRecent.length?`<div class="content-card"><div class="card-head-row"><div><h3>Salinan Pemulihan Terbaru</h3><p>Salinan pemeriksaan terpisah dari Master aktif.</p></div></div><div class="recovery-list">${recoveryRecent.map(item=>`<div class="recovery-list-item"><div><strong class="backup-file-name">${esc(item.name)}</strong><span>${fmtDateTime(item.createdAt)}</span></div>${item.url?`<button class="mini-btn" data-open-recovery="${esc(item.url)}">Buka</button>`:''}</div>`).join('')}</div></div>`:''}
 
-      ${labCard}
 
       <div class="content-card recovery-guide-card"><div class="card-head-row"><div><span class="eyebrow">PANDUAN PEMULIHAN CEPAT</span><h3>Apa masalah yang terjadi?</h3><p>Pilih situasi yang paling sesuai. Dashboard ini menjadi panduan utama Admin Data saat terjadi masalah.</p></div></div><div class="recovery-guide-grid">
-        <details open><summary>Satu cell/field Master terhapus</summary><ol><li>Jangan melakukan perubahan lain pada cell tersebut.</li><li>Buka <b>Bandingkan Master dengan Backup</b>.</li><li>Pilih backup sebelum kesalahan.</li><li>Klik <b>Bandingkan</b> dan centang hanya cell yang ingin dikembalikan.</li><li>Masukkan PIN Admin. Sistem membuat backup pengaman sebelum pemulihan.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
+        <details open><summary>Satu cell/field Master terhapus</summary><ol><li>Jangan melakukan perubahan lain pada cell tersebut.</li><li>Buka <b>Bandingkan Master dengan Backup</b>.</li><li>Pilih backup sebelum kesalahan.</li><li>Klik <b>Bandingkan</b> dan centang hanya cell yang ingin dikembalikan.</li><li>Masukkan PIN Admin. Sistem membuat backup pengaman sebelum pemulihan.</li><li>Ulangi <b>Bandingkan Master dengan Backup</b> untuk memastikan cell yang dipulihkan tidak lagi ditawarkan.</li></ol></details>
         <details><summary>Satu sheet sistem seperti KENDALA_KURIR terhapus</summary><ol><li>Jangan membuat sheet pengganti manual.</li><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Klik <b>Pulihkan Sheet Sistem</b> pada sheet yang hilang.</li><li>Masukkan PIN Admin.</li><li>Setelah selesai, periksa kembali <b>Kesehatan Struktur</b> dan <b>Proteksi Edit Manual</b>.</li></ol></details>
         <details><summary>Sheet ada tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>DATABASE / riwayat transaksi terhapus</summary><ol><li>Hentikan perubahan transaksi bila memungkinkan.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Periksa <b>Checkpoint Transaksi</b> dan sumber yang direkomendasikan.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Periksa hasil consistency check dan gap waktu terhadap checkpoint.</li></ol></details>
-        <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka Google Drive → Sampah.</li><li>Pulihkan file asli sesegera mungkin.</li><li>Jika sedang melakukan pengujian, gunakan Lab Uji dan tombol <b>Pulihkan dari Sampah</b>.</li></ol></details>
+        <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka bagian <b>Kesehatan Struktur</b> dan pastikan status file terdeteksi.</li><li>Jika tombol <b>Pulihkan File Asli</b> tersedia, gunakan tombol tersebut dan masukkan PIN Admin.</li><li>Jika file belum dapat diakses dari Dashboard, buka Google Drive → Sampah dan pulihkan file asli.</li><li>Kembali ke Dashboard lalu periksa <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>File Master hilang permanen</summary><ol><li>Gunakan backup sehat untuk membuat salinan pemulihan.</li><li>Periksa seluruh sheet dan konsistensi data.</li><li>Siapkan file pengganti dari backup sehat.</li><li>Relink backend hanya dilakukan pengelola sistem/IT. Jangan mengubah koneksi produksi tanpa pemeriksaan.</li></ol></details>
       </div><div class="system-alert info"><strong>Prinsip aman</strong><span>Pulihkan sekecil mungkin: cell untuk salah hapus cell, satu sheet untuk sheet sistem, dan bundle transaksi hanya untuk keadaan darurat.</span></div></div>`;
 
@@ -350,13 +347,7 @@ export function createAdminModule(ctx) {
     document.getElementById('refreshStructureHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('refreshDataHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('restoreProductionTrash')?.addEventListener('click',restoreProductionFromTrash_);
-    document.getElementById('compareMasterCells')?.addEventListener('click',() => openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value,false));
-    document.getElementById('createRecoveryLab')?.addEventListener('click',createRecoveryLab_);
-    document.getElementById('refreshRecoveryLab')?.addEventListener('click',refreshRecoveryLab_);
-    document.getElementById('resetRecoveryLab')?.addEventListener('click',resetRecoveryLab_);
-    document.getElementById('restoreLabTrash')?.addEventListener('click',restoreRecoveryLabTrash_);
-    document.getElementById('labCompareCells')?.addEventListener('click',() => openCellComparison_('',document.getElementById('labCellSheet')?.value,true));
-    root.querySelectorAll('[data-open-lab]').forEach(button=>button.addEventListener('click',()=>window.open(button.dataset.openLab,'_blank','noopener')));
+    document.getElementById('compareMasterCells')?.addEventListener('click',() => openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value));
     root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
     root.querySelectorAll('[data-open-recovery]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openRecovery,'_blank','noopener')));
     root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName)));
@@ -364,19 +355,33 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-restore-missing]').forEach(button=>button.addEventListener('click',()=>restoreMissingProductionSheet_(button.dataset.restoreMissing,button.dataset.sourceId)));
     root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId)));
     root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore)));
-    root.querySelectorAll('[data-lab-restore-sheet]').forEach(button=>button.addEventListener('click',()=>restoreMissingLabSheet_(button.dataset.labRestoreSheet)));
-    root.querySelectorAll('[data-lab-emergency]').forEach(button=>button.addEventListener('click',emergencyRestoreLab_));
   }
 
   async function refreshResilienceState_({silent=false,preserveScroll=true}={}) {
-    if (archiveRefreshBusy) return;
+    if (archiveRefreshBusy) {
+      for (let i=0;i<20 && archiveRefreshBusy;i++) await new Promise(resolve => setTimeout(resolve,100));
+      if (archiveRefreshBusy) return false;
+    }
     archiveRefreshBusy = true;
     const x = window.scrollX;
     const y = window.scrollY;
     try {
-      await refreshResilienceState_({silent:true,preserveScroll:true});
+      const [archiveResult,resilienceResult] = await Promise.allSettled([
+        api().adminArchiveHealth(token()),
+        api().adminResilienceHealth(token())
+      ]);
+      if (resilienceResult.status !== 'fulfilled') throw resilienceResult.reason;
+      state.resilience = resilienceResult.value.data?.health || null;
+      state.archive = archiveResult.status === 'fulfilled'
+        ? (archiveResult.value.data?.health || null)
+        : {unavailable:true,error:String(archiveResult.reason?.message || 'Informasi arsip sementara tidak tersedia.')};
+      if (archiveMounted_()) drawArchive();
       if (preserveScroll) restoreScroll_(x,y);
       if (!silent) ctx.showToast('Kesehatan data diperbarui.','success');
+      return true;
+    } catch (error) {
+      if (!silent) ctx.showToast(error.message,'error',7000);
+      throw error;
     } finally {
       archiveRefreshBusy = false;
     }
@@ -415,14 +420,14 @@ export function createAdminModule(ctx) {
     } catch (error) { ctx.showToast(error.message,'error',8000); }
   }
 
-  async function openCellComparison_(sourceId,sheetName,testMode=false) {
+  async function openCellComparison_(sourceId,sheetName) {
     if (!sheetName) return;
     try {
-      const response = testMode ? await api().adminLabCompareCells(token(),sheetName) : await api().adminCompareMasterCells(token(),sourceId,sheetName);
+      const response = await api().adminCompareMasterCells(token(),sourceId,sheetName);
       const comparison = response.data?.comparison || {};
       const rows = Array.isArray(comparison.candidates) ? comparison.candidates : [];
       if (!rows.length) { ctx.showToast('Tidak ditemukan cell kosong yang berbeda dari backup.','success'); return; }
-      ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PEMULIHAN CELL</div><h3>${esc(masterSheetLabel(sheetName))}</h3><p>${testMode?'Clone uji dibandingkan dengan baseline sehat.':`Sumber: ${esc(comparison.sourceName||'-')}`}</p></div><button class="modal-x" data-modal-close>×</button></div>
+      ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">PEMULIHAN CELL</div><h3>${esc(masterSheetLabel(sheetName))}</h3><p>Sumber: ${esc(comparison.sourceName||'-')}</p></div><button class="modal-x" data-modal-close>×</button></div>
         <div class="system-alert info"><strong>Pilih hanya cell yang memang tidak sengaja terhapus.</strong><span>Cell yang sengaja dikosongkan tidak perlu dipulihkan.</span></div>
         <div class="cell-diff-list">${rows.map(item=>`<label class="cell-diff-row"><input type="checkbox" value="${esc(item.a1)}" data-cell-restore><span><strong>${esc(item.a1)}</strong><small>Backup: ${esc(item.backupValue||'-')}</small></span></label>`).join('')}</div>
         <div class="field"><label for="cellRestorePin">PIN Admin <b>*</b></label><input id="cellRestorePin" type="password" inputmode="numeric" autocomplete="off" placeholder="Masukkan PIN Admin"></div><div id="cellRestoreMsg"></div>
@@ -435,8 +440,9 @@ export function createAdminModule(ctx) {
         if(!pin){msg.innerHTML='<div class="alert error">PIN Admin wajib diisi.</div>';return;}
         const button=document.getElementById('cellRestoreSave');button.disabled=true;
         try{
-          if(testMode) await api().adminLabRestoreCells(token(),sheetName,cells,pin);
-          else await api().adminRestoreMasterCells(token(),sourceId,sheetName,cells,pin);
+          const response = await api().adminRestoreMasterCells(token(),sourceId,sheetName,cells,pin);
+          const verification = response.data?.restore?.verification || {};
+          if (verification.ok !== true) throw new Error('Pemulihan cell belum lolos verifikasi backend.');
           ctx.closeModal();ctx.showToast(`${cells.length} cell berhasil dipulihkan.`,'success',6000);await refreshResilienceState_({silent:true,preserveScroll:true});
         }catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;button.disabled=false;}
       });
@@ -449,40 +455,6 @@ export function createAdminModule(ctx) {
     try{await api().adminRestoreActiveFromTrash(token(),pin);ctx.showToast('File Master produksi kembali aktif.','success',6000);await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
   }
 
-  async function createRecoveryLab_() {
-    const pin=await requestAdminPin_({title:'Buat clone uji pemulihan?',message:'Sistem akan membuat baseline dan clone kerja khusus pengujian. Master produksi tidak diubah.',confirmLabel:'Buat Clone Uji'});
-    if(!pin)return;
-    try{await api().adminCreateRecoveryLab(token(),pin);ctx.showToast('Lab Uji Pemulihan berhasil dibuat.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
-  }
-
-  async function refreshRecoveryLab_() {
-    try{await refreshResilienceState_({silent:true,preserveScroll:true});ctx.showToast('Status clone uji diperbarui.','success');}catch(error){ctx.showToast(error.message,'error');}
-  }
-
-  async function resetRecoveryLab_() {
-    const pin=await requestAdminPin_({title:'Reset clone uji?',message:'Clone kerja lama akan dipindahkan ke Sampah dan clone baru dibuat dari baseline sehat. Produksi tidak berubah.',confirmLabel:'Reset Clone'});
-    if(!pin)return;
-    try{await api().adminLabResetWorking(token(),pin);ctx.showToast('Clone uji direset dari baseline sehat.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
-  }
-
-  async function restoreRecoveryLabTrash_() {
-    const pin=await requestAdminPin_({title:'Pulihkan clone uji dari Sampah?',message:'File clone kerja akan dikembalikan dari Sampah Google Drive.',confirmLabel:'Pulihkan dari Sampah'});
-    if(!pin)return;
-    try{await api().adminLabRestoreTrash(token(),pin);ctx.showToast('Clone uji kembali aktif.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
-  }
-
-  async function restoreMissingLabSheet_(sheetName) {
-    const pin=await requestAdminPin_({title:`Uji restore ${systemSheetLabel(sheetName)}?`,message:'Sheet hanya akan dipulihkan pada clone uji. Master produksi tidak berubah.',confirmLabel:'Pulihkan di Clone'});
-    if(!pin)return;
-    try{await api().adminLabRestoreMissingSheet(token(),sheetName,pin);ctx.showToast(`${systemSheetLabel(sheetName)} pada clone berhasil dipulihkan.`,'success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
-  }
-
-  async function emergencyRestoreLab_() {
-    const pin=await requestAdminPin_({title:'Uji pemulihan darurat DATABASE?',message:'Bundle transaksi pada clone uji akan dikembalikan dari baseline sehat. Produksi tidak berubah.',confirmLabel:'Pulihkan Bundle Uji'});
-    if(!pin)return;
-    try{const response=await api().adminLabEmergencyRestore(token(),pin,true);const c=response.data?.restore?.consistency||{};ctx.showToast(`Pemulihan darurat clone selesai. Konsistensi: ${c.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,c.ok?'success':'warning',7000);await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
-  }
-
   function openBackupModal_() {
     ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">BACKUP MASTER</div><h3>Buat Backup Sekarang</h3><p>Gunakan sebelum perubahan penting pada Master Spreadsheet.</p></div><button class="modal-x" data-modal-close>×</button></div><div class="field"><label for="backupNote">Catatan <span class="optional">opsional</span></label><textarea id="backupNote" rows="3" placeholder="Contoh: sebelum menambah pegawai atau mengganti PIN"></textarea></div><div id="backupModalMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="backupSave" class="primary-btn">Buat Backup</button></div>`);
     document.getElementById('backupSave')?.addEventListener('click',async() => {
@@ -491,7 +463,7 @@ export function createAdminModule(ctx) {
       try {
         await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
         ctx.closeModal();
-        ctx.showToast('Backup Master berhasil dibuat.','success');
+        ctx.showToast('Backup Master berhasil dibuat. Daftar backup diperbarui.','success');
         await refreshResilienceState_({silent:true,preserveScroll:true});
       } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
     });

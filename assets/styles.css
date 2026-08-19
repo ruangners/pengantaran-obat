@@ -247,10 +247,9 @@ body[data-role]{--role-accent:#0a6c76;--role-accent-soft:#eaf4f5}
 .structure-issue-list{display:grid;gap:9px}.structure-issue{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#fff}.structure-issue strong{display:block;font-size:12px}.structure-issue span{display:block;color:var(--muted);font-size:10px;margin-top:3px;line-height:1.45}.structure-issue .mini-btn{flex:0 0 auto}
 .cell-recovery-card{border-left:3px solid #437486}.cell-recovery-controls,.inline-form{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.cell-recovery-controls select,.inline-form select{min-width:220px;border:1px solid #cbdade;border-radius:11px;padding:10px 12px;background:#fff;color:var(--ink)}
 .cell-diff-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:380px;overflow:auto;padding:2px}.cell-diff-row{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#fff;cursor:pointer}.cell-diff-row input{margin-top:2px}.cell-diff-row strong{display:block;font-size:11px}.cell-diff-row small{display:block;color:var(--muted);font-size:9px;margin-top:3px;overflow-wrap:anywhere}
-.recovery-lab-card{border-left:3px solid #365d73}.lab-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.lab-facts>div{padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#f7fafb}.lab-facts span{display:block;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.lab-facts strong{display:block;font-size:10px;margin-top:4px;overflow-wrap:anywhere}.text-btn{border:0;background:transparent;padding:5px 0 0;color:#0a707b;font-size:10px;font-weight:850;text-decoration:underline;cursor:pointer}.recovery-lab-actions{margin-top:12px}.lab-issues{margin-top:12px}.lab-cell-tools{margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}.lab-cell-tools>strong{display:block;font-size:11px;margin-bottom:8px}.mini-btn.secondary-soft{background:#edf3f5;color:#395762}.mini-btn.danger-soft{background:#feeaea;color:#a52f37;border:1px solid #f3c6c9}
 #archiveBody .recovery-guide-card{margin-bottom:4px}
-@media(max-width:900px){.lab-facts{grid-template-columns:1fr 1fr}.cell-diff-list{grid-template-columns:1fr}.structure-issue{align-items:flex-start}}
-@media(max-width:650px){#archiveBody>.content-card{padding:16px}.lab-facts{grid-template-columns:1fr}.structure-issue{display:block}.structure-issue .mini-btn{margin-top:10px;width:100%}.cell-recovery-controls,.inline-form{display:grid;grid-template-columns:1fr}.cell-recovery-controls select,.inline-form select{min-width:0;width:100%}}
+@media(max-width:900px){.cell-diff-list{grid-template-columns:1fr}.structure-issue{align-items:flex-start}}
+@media(max-width:650px){#archiveBody>.content-card{padding:16px}.structure-issue{display:block}.structure-issue .mini-btn{margin-top:10px;width:100%}.cell-recovery-controls,.inline-form{display:grid;grid-template-columns:1fr}.cell-recovery-controls select,.inline-form select{min-width:0;width:100%}}
 .data-health-card{border-left:3px solid #6a7f89}.data-health-card.warning-card{background:#fffdf8}
 .emergency-recovery-card{border-left:3px solid #4b6876}.emergency-recovery-card.danger-card{border-left-color:#b54149;background:#fffafa}
 .structure-issue small{display:block;color:#7d8f97;font-size:9px;margin-top:4px;line-height:1.45}
@@ -258,16 +257,15 @@ body[data-role]{--role-accent:#0a6c76;--role-accent-soft:#eaf4f5}
 /* Admin Data resilience hierarchy */
 #archiveBody .admin-section-title .eyebrow,
 #archiveBody .content-card .card-head-row .eyebrow,
-#archiveBody .recovery-guide-card .eyebrow,
-#archiveBody .recovery-lab-card .eyebrow {
-  color:#075463;
-  font-weight:950;
-  letter-spacing:.12em;
+#archiveBody .recovery-guide-card .eyebrow {
+  color:#005766;
+  font-weight:1000;
+  letter-spacing:.13em;
 }
 #archiveBody .emergency-recovery-card.danger-card .eyebrow {
   color:#a7333c;
 }
 #archiveBody .content-card .card-head-row h3,
 #archiveBody .admin-section-title h2 {
-  color:#092f3b;
+  color:#052f3b;
 }

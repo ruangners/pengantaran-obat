@@ -53,7 +53,8 @@ export class AppsScriptTransport {
     if (this.expectedContract && contract !== this.expectedContract) {
       throw apiError(`Versi aplikasi dan server belum cocok. Server ${version || 'tidak diketahui'} menggunakan kontrak ${contract || '-'}, sedangkan aplikasi memerlukan ${this.expectedContract}.`, 'VERSION_MISMATCH');
     }
-    this.onState({ ready: true, message: 'Layanan terhubung' });
+    const degraded = result?.data?.degraded === true;
+    this.onState({ ready: true, message: degraded ? 'Layanan terhubung • pemulihan diperlukan' : 'Layanan terhubung' });
     return result;
   }
 
@@ -91,11 +92,9 @@ export class AppsScriptTransport {
   _call(method, args, mutationId) {
     if (!navigator.onLine) return Promise.reject(apiError('Perangkat sedang offline. Periksa koneksi internet lalu coba kembali.', 'OFFLINE'));
     const resilienceLongMethods = new Set([
-      'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth','admin.recoveryLabHealth',
+      'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
       'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetContent',
-      'admin.restoreMasterCells','admin.emergencyRestore','admin.createRecoveryLab','admin.labRestoreMissingSheet',
-      'admin.labRestoreCells','admin.labEmergencyRestore','admin.labRestoreTrash','admin.labResetWorking',
-      'admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
+      'admin.restoreMasterCells','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
     ]);
     const requestTimeoutMs = resilienceLongMethods.has(String(method || '')) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(this.endpoint)) {
@@ -254,14 +253,6 @@ export class PengantaranApi {
   adminCompareMasterCells(token, sourceId, sheetName) { return this._read('admin.compareMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || '')); }
   adminRestoreMasterCells(token, sourceId, sheetName, cells = [], adminPin = '') { return this._mutate('admin.restoreMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || ''), Array.isArray(cells) ? cells : [], String(adminPin || '')); }
   adminEmergencyRestore(token, sourceId, adminPin = '', acknowledged = false) { return this._mutate('admin.emergencyRestore', String(token || ''), String(sourceId || ''), String(adminPin || ''), acknowledged === true); }
-  adminCreateRecoveryLab(token, adminPin = '') { return this._mutate('admin.createRecoveryLab', String(token || ''), String(adminPin || '')); }
-  adminRecoveryLabHealth(token) { return this._read('admin.recoveryLabHealth', String(token || '')); }
-  adminLabRestoreMissingSheet(token, sheetName, adminPin = '') { return this._mutate('admin.labRestoreMissingSheet', String(token || ''), String(sheetName || ''), String(adminPin || '')); }
-  adminLabCompareCells(token, sheetName) { return this._read('admin.labCompareCells', String(token || ''), String(sheetName || '')); }
-  adminLabRestoreCells(token, sheetName, cells = [], adminPin = '') { return this._mutate('admin.labRestoreCells', String(token || ''), String(sheetName || ''), Array.isArray(cells) ? cells : [], String(adminPin || '')); }
-  adminLabEmergencyRestore(token, adminPin = '', acknowledged = false) { return this._mutate('admin.labEmergencyRestore', String(token || ''), String(adminPin || ''), acknowledged === true); }
-  adminLabRestoreTrash(token, adminPin = '') { return this._mutate('admin.labRestoreTrash', String(token || ''), String(adminPin || '')); }
-  adminLabResetWorking(token, adminPin = '') { return this._mutate('admin.labResetWorking', String(token || ''), String(adminPin || '')); }
   adminRestoreActiveFromTrash(token, adminPin = '') { return this._mutate('admin.restoreActiveFromTrash', String(token || ''), String(adminPin || '')); }
   adminApplyProtections(token, adminPin = '') { return this._mutate('admin.applyProtections', String(token || ''), String(adminPin || '')); }
   adminEnsureBackupSchedule(token, adminPin = '') { return this._mutate('admin.ensureBackupSchedule', String(token || ''), String(adminPin || '')); }
