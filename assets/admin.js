@@ -275,6 +275,8 @@ export function createAdminModule(ctx) {
     const lastStructureRestore = r.lastStructureRestore || null;
     const lastCellRestore = r.lastCellRestore || null;
     const lastContentRestore = r.lastContentRestore || null;
+    const lastTransactionRestore = r.lastTransactionRestore || null;
+    const maintenanceMode = r.maintenanceMode || {};
     const recoverableSheets = Array.isArray(r.recoverableMasterSheets) ? r.recoverableMasterSheets : [];
     const masterFile = structure.file || {};
 
@@ -284,7 +286,8 @@ export function createAdminModule(ctx) {
       lastSystemRestore ? `<div class="system-alert success"><strong>Pemulihan sheet sistem terakhir berhasil</strong><span>${fmtDateTime(lastSystemRestore.at)} • ${esc((lastSystemRestore.sheet || (lastSystemRestore.sheets||[]).join(', ')) || '-')}</span></div>` : '',
       lastStructureRestore ? `<div class="system-alert success"><strong>Pemulihan struktur sheet terakhir berhasil</strong><span>${fmtDateTime(lastStructureRestore.at)} • ${esc(systemSheetLabel(lastStructureRestore.sheet || '-'))}${lastStructureRestore.mode==='FULL_SHEET_FROM_HEALTHY_BACKUP'?` • header dan isi dipulihkan`:''}</span></div>` : '',
       lastCellRestore ? `<div class="system-alert success"><strong>Pemulihan cell terakhir berhasil</strong><span>${fmtDateTime(lastCellRestore.at)} • ${esc(lastCellRestore.sheet || '-')} • ${esc((lastCellRestore.cells||[]).join(', '))}</span></div>` : '',
-      lastContentRestore ? `<div class="system-alert success"><strong>Pemulihan isi sheet terakhir berhasil</strong><span>${fmtDateTime(lastContentRestore.at)} • ${esc(systemSheetLabel(lastContentRestore.sheet || '-'))} • ${Number(lastContentRestore.restoredRows||0)} data dikembalikan</span></div>` : ''
+      lastContentRestore ? `<div class="system-alert success"><strong>Pemulihan isi sheet terakhir berhasil</strong><span>${fmtDateTime(lastContentRestore.at)} • ${esc(systemSheetLabel(lastContentRestore.sheet || '-'))} • ${Number(lastContentRestore.restoredRows||0)} data dikembalikan</span></div>` : '',
+      lastTransactionRestore ? `<div class="system-alert success"><strong>Pemulihan transaksi terakhir berhasil</strong><span>${fmtDateTime(lastTransactionRestore.at)} • ${lastTransactionRestore.mode==='MISSING_RECORD_MERGE'?`${Number(lastTransactionRestore.restoredRows||0)} record hilang dikembalikan`:'bundle transaksi dipulihkan'}${lastTransactionRestore.consistency?` • konsistensi ${lastTransactionRestore.consistency.ok?'AMAN':'PERLU PERHATIAN'}`:''}</span></div>` : ''
     ].join('');
 
     const fileStateBlock = masterFile.trashed ? `<div class="content-card structure-health-card warning-card"><div class="card-head-row"><div><span class="eyebrow">FILE MASTER</span><h3>⚠ File Master berada di Sampah Drive</h3><p>Pulihkan file asli terlebih dahulu. Ini lebih aman daripada membuat Master baru dari backup.</p></div><button id="restoreProductionTrash" class="warning-btn">Pulihkan File Asli</button></div></div>` : '';
@@ -308,14 +311,20 @@ export function createAdminModule(ctx) {
       const source=item.recommendedSource||null;
       const critical=String(item.severity||'')==='CRITICAL';
       const hasStructureIssue=structureIssueNames.has(String(item.name||''));
-      const action=hasStructureIssue ? '<span class="status-badge warning">Pulihkan struktur lebih dulu</span>' : (source ? (critical ? `<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-data-issue="${esc(item.name)}">Pemulihan Darurat</button>` : `<button class="mini-btn warning-soft" data-restore-content="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Isi</button>`) : '<span class="status-badge failed">Backup Sehat Terakhir tidak ditemukan</span>');
-      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>Data sekarang: ${Number(item.currentRows||0)} • Backup Sehat Terakhir: ${Number(item.backupRows||0)}${source?` • ${esc(source.name)}`:''}</span><small>${esc(item.message||'Data perlu diperiksa.')}</small></div>${action}</div>`;
+      let action='<span class="status-badge failed">Backup Sehat Terakhir tidak ditemukan</span>';
+      if (hasStructureIssue) action='<span class="status-badge warning">Pulihkan struktur lebih dulu</span>';
+      else if (source && critical) action=`<button class="mini-btn warning-soft" data-restore-transactions="${esc(source.id)}" data-data-issue="${esc(item.name)}">Pulihkan Transaksi Hilang</button>`;
+      else if (source) action=`<button class="mini-btn warning-soft" data-restore-content="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Isi</button>`;
+      const missingNote=Number(item.missingCount||0)>0?` • Hilang: ${Number(item.missingCount||0)}${Array.isArray(item.missingKeys)&&item.missingKeys.length?` • contoh ID: ${esc(item.missingKeys.slice(0,5).join(', '))}`:''}`:'';
+      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>Data sekarang: ${Number(item.currentRows||0)} • Backup Sehat Terakhir: ${Number(item.backupRows||0)}${missingNote}${source?` • ${esc(source.name)}`:''}</span><small>${esc(item.message||'Data perlu diperiksa.')}</small></div>${action}</div>`;
     }).join('')}</div>`:''}</div>`;
 
     const criticalStructureIssues = structureIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const criticalDataIssues = dataIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const emergencyNeeded = criticalStructureIssues.length || criticalDataIssues.length;
-    const emergencyCard = `<div class="content-card emergency-recovery-card ${emergencyNeeded?'danger-card':''}"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN DARURAT</span><h3>${emergencyNeeded?'🚨 Data transaksi kritis perlu pemulihan':'✓ Tidak ada kondisi darurat'}</h3><p>${emergencyNeeded?'Gunakan hanya untuk DATABASE atau komponen transaksi kritis. Pemulihan dilakukan sebagai satu bundle agar relasi data tetap konsisten.':'DATABASE dan komponen transaksi kritis terdeteksi dalam kondisi tersedia.'}</p></div></div>${emergencyNeeded?`<div class="system-alert warning compact-alert"><strong>Jangan lanjutkan perubahan transaksi bila memungkinkan.</strong><span>Gunakan sumber yang direkomendasikan sistem dan periksa hasil consistency check setelah pemulihan.</span></div>`:''}</div>`;
+    const fullEmergencyNeeded = criticalStructureIssues.length > 0;
+    const partialCriticalNeeded = !fullEmergencyNeeded && criticalDataIssues.length > 0;
+    const emergencyCard = `<div class="content-card emergency-recovery-card ${fullEmergencyNeeded?'danger-card':partialCriticalNeeded?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN DARURAT</span><h3>${fullEmergencyNeeded?'🚨 Struktur transaksi kritis perlu pemulihan':partialCriticalNeeded?'⚠ Integritas transaksi perlu diperiksa':'✓ Tidak ada kondisi darurat'}</h3><p>${fullEmergencyNeeded?'DATABASE atau komponen transaksi kritis rusak/hilang. Gunakan Pemulihan Darurat Bundle dari satu checkpoint agar relasi data tetap konsisten.':partialCriticalNeeded?'Beberapa record transaksi tidak ditemukan. Gunakan Pulihkan Transaksi Hilang agar hanya record yang hilang dikembalikan tanpa rollback data baru.':'DATABASE dan komponen transaksi kritis terdeteksi dalam kondisi tersedia.'}</p></div></div>${emergencyNeeded?`<div class="system-alert warning compact-alert"><strong>Mode pemulihan ${maintenanceMode.active?'aktif':'disiapkan'}.</strong><span>${fullEmergencyNeeded?'Jangan lanjutkan transaksi. Pulihkan bundle dan pastikan verifikasi integritas AMAN sebelum operasional dibuka kembali.':'Pulihkan record yang hilang berdasarkan ID. Jika verifikasi gagal, lanjutkan melalui Pemulihan Darurat Bundle.'}</span></div>`:''}</div>`;
 
     const sourceOptions = recent.map(item=>`<option value="${esc(item.id)}">${esc(backupKindLabel(item.kind))} • ${esc(item.name)}</option>`).join('');
 
@@ -356,7 +365,8 @@ export function createAdminModule(ctx) {
         <details><summary>Satu sheet sistem seperti KENDALA_KURIR terhapus</summary><ol><li>Jangan membuat sheet pengganti manual.</li><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Klik <b>Pulihkan Sheet Sistem</b> pada sheet yang hilang.</li><li>Masukkan PIN Admin.</li><li>Setelah selesai, periksa kembali <b>Kesehatan Struktur</b> dan <b>Proteksi Edit Manual</b>.</li></ol></details>
         <details><summary>Header/struktur sheet terhapus atau sheet kosong total</summary><ol><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Pastikan nama sheet masih ada tetapi header/struktur terdeteksi rusak.</li><li>Klik <b>Pulihkan Struktur Sheet</b>.</li><li>Masukkan PIN Admin.</li><li>Jika sheet kosong total, sistem mengembalikan header, format, dan isi dari <b>Backup Sehat Terakhir</b>. Jika data masih ada, sistem memulihkan struktur tanpa menimpa data yang masih tersisa.</li><li>Periksa kembali <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>Sheet ada, header masih utuh, tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Pastikan <b>Kesehatan Struktur</b> berstatus aman untuk sheet tersebut.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
-        <details><summary>DATABASE / riwayat transaksi terhapus</summary><ol><li>Hentikan perubahan transaksi bila memungkinkan.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Periksa <b>Checkpoint Transaksi</b> dan sumber yang direkomendasikan.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Periksa hasil consistency check dan gap waktu terhadap checkpoint.</li></ol></details>
+        <details><summary>Beberapa baris DATABASE / transaksi terhapus</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Sistem membandingkan <b>ID Sistem</b>, <b>ATTEMPT_ID</b>, dan <b>PARENT_ID</b> dengan <b>Backup Sehat Terakhir</b>.</li><li>Jika record hilang terdeteksi, klik <b>Pulihkan Transaksi Hilang</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem hanya menambahkan record yang hilang dan tidak me-rollback transaksi baru.</li><li>Pastikan hasil verifikasi integritas berstatus <b>AMAN</b>.</li></ol></details>
+        <details><summary>DATABASE kosong total, header rusak, atau sheet DATABASE hilang</summary><ol><li>Hentikan operasional transaksi.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Gunakan sumber checkpoint/backup yang direkomendasikan sistem.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Sistem mengembalikan DATABASE dan komponen transaksi terkait sebagai satu bundle.</li><li>Operasional hanya dianggap aman setelah verifikasi header, ID, duplikasi, dan relasi transaksi berstatus <b>AMAN</b>.</li></ol></details>
         <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka bagian <b>Kesehatan Struktur</b> dan pastikan status file terdeteksi.</li><li>Jika tombol <b>Pulihkan File Asli</b> tersedia, gunakan tombol tersebut dan masukkan PIN Admin.</li><li>Jika file belum dapat diakses dari Dashboard, buka Google Drive → Sampah dan pulihkan file asli.</li><li>Kembali ke Dashboard lalu periksa <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>File Master hilang permanen</summary><ol><li>Gunakan backup sehat untuk membuat salinan pemulihan.</li><li>Periksa seluruh sheet dan konsistensi data.</li><li>Siapkan file pengganti dari backup sehat.</li><li>Relink backend hanya dilakukan pengelola sistem/IT. Jangan mengubah koneksi produksi tanpa pemeriksaan.</li></ol></details>
       </div><div class="system-alert info"><strong>Prinsip aman</strong><span>Pulihkan sekecil mungkin: cell untuk salah hapus cell, satu sheet untuk sheet sistem, dan bundle transaksi hanya untuk keadaan darurat.</span></div></div>`;
@@ -377,6 +387,7 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-restore-missing]').forEach(button=>button.addEventListener('click',()=>restoreMissingProductionSheet_(button.dataset.restoreMissing,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-restore-structure]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetStructure_(button.dataset.restoreStructure,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId,button)));
+    root.querySelectorAll('[data-restore-transactions]').forEach(button=>button.addEventListener('click',()=>restoreMissingTransactionsProduction_(button.dataset.restoreTransactions,button)));
     root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore,button)));
   }
 
@@ -410,6 +421,12 @@ export function createAdminModule(ctx) {
     }
   }
 
+  async function refreshAfterRecovery_() {
+    await refreshResilienceState_({silent:true,preserveScroll:true});
+    await new Promise(resolve=>setTimeout(resolve,450));
+    await refreshResilienceState_({silent:true,preserveScroll:true});
+  }
+
   async function restoreMissingProductionSheet_(sheetName,sourceId,triggerButton=null) {
     const pin = await requestAdminPin_({title:`Pulihkan ${systemSheetLabel(sheetName)}?`,message:`Sheet ${sheetName} akan dibuat kembali dari backup sehat yang dipilih sistem. Data lain tidak disentuh.`,confirmLabel:'Ya, Pulihkan Sheet'});
     if (!pin) return;
@@ -417,7 +434,7 @@ export function createAdminModule(ctx) {
     try {
       await api().adminRestoreMissingSheet(token(),sourceId,sheetName,pin);
       ctx.showToast(`${systemSheetLabel(sheetName)} berhasil dipulihkan.`,'success',6000);
-      await refreshResilienceState_({silent:true,preserveScroll:true});
+      await refreshAfterRecovery_();
     } catch (error) { ctx.showToast(error.message,'error',7000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -434,7 +451,7 @@ export function createAdminModule(ctx) {
         ? `${systemSheetLabel(sheetName)} berhasil dipulihkan lengkap termasuk ${Number(restore.restoredRows||0)} data.`
         : `Struktur ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menimpa data yang masih ada.`;
       ctx.showToast(message,'success',8000);
-      await refreshResilienceState_({silent:true,preserveScroll:true});
+      await refreshAfterRecovery_();
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -448,9 +465,23 @@ export function createAdminModule(ctx) {
       const response = await api().adminRestoreSheetContent(token(),sourceId,sheetName,pin);
       const restore = response.data?.restore || {};
       ctx.showToast(`${Number(restore.restoredRows||0)} data ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menghapus data baru.`,'success',8000);
-      await refreshResilienceState_({silent:true,preserveScroll:true});
+      await refreshAfterRecovery_();
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
+  }
+
+  async function restoreMissingTransactionsProduction_(sourceId,triggerButton=null) {
+    const pin=await requestAdminPin_({title:'Pulihkan transaksi yang hilang?',message:'Sistem hanya akan menambahkan record transaksi yang hilang berdasarkan ID dari checkpoint sehat. Data transaksi baru yang sudah ada tidak dihapus atau di-rollback.',confirmLabel:'Ya, Pulihkan Transaksi'});
+    if(!pin)return;
+    setBusy(triggerButton,true,'Memulihkan…');
+    try{
+      const response=await api().adminRestoreMissingTransactions(token(),sourceId,pin,true);
+      const restore=response.data?.restore||{};
+      const consistency=restore.consistency||{};
+      ctx.showToast(`${Number(restore.restoredRows||0)} record transaksi berhasil dipulihkan. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',9000);
+      await refreshAfterRecovery_();
+    }catch(error){ctx.showToast(error.message,'error',9000);}
+    finally{setBusy(triggerButton,false);}
   }
 
   async function emergencyRestoreProduction_(sourceId,triggerButton=null) {
@@ -461,7 +492,7 @@ export function createAdminModule(ctx) {
       const response = await api().adminEmergencyRestore(token(),sourceId,pin,true);
       const consistency = response.data?.restore?.consistency || {};
       ctx.showToast(`Pemulihan darurat selesai. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',8000);
-      await refreshResilienceState_({silent:true,preserveScroll:true});
+      await refreshAfterRecovery_();
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }

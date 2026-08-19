@@ -94,9 +94,14 @@ export class AppsScriptTransport {
     const resilienceLongMethods = new Set([
       'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
       'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetContent',
-      'admin.restoreMasterCells','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
+      'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
     ]);
-    const requestTimeoutMs = resilienceLongMethods.has(String(method || '')) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
+    const methodName=String(method||'');
+    const requestTimeoutMs = methodName === 'admin.emergencyRestore'
+      ? Math.max(this.timeoutMs, 180000)
+      : methodName === 'admin.restoreMissingTransactions'
+        ? Math.max(this.timeoutMs, 120000)
+        : resilienceLongMethods.has(methodName) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(this.endpoint)) {
       return Promise.reject(apiError('Alamat layanan belum dikonfigurasi dengan benar.', 'INVALID_BACKEND_URL'));
     }
@@ -253,6 +258,7 @@ export class PengantaranApi {
   adminRestoreSheetContent(token, sourceId, sheetName, adminPin = '') { return this._mutate('admin.restoreSheetContent', String(token || ''), String(sourceId || ''), String(sheetName || ''), String(adminPin || '')); }
   adminCompareMasterCells(token, sourceId, sheetName) { return this._read('admin.compareMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || '')); }
   adminRestoreMasterCells(token, sourceId, sheetName, cells = [], adminPin = '') { return this._mutate('admin.restoreMasterCells', String(token || ''), String(sourceId || ''), String(sheetName || ''), Array.isArray(cells) ? cells : [], String(adminPin || '')); }
+  adminRestoreMissingTransactions(token, sourceId, adminPin = '', acknowledged = false) { return this._mutate('admin.restoreMissingTransactions', String(token || ''), String(sourceId || ''), String(adminPin || ''), acknowledged === true); }
   adminEmergencyRestore(token, sourceId, adminPin = '', acknowledged = false) { return this._mutate('admin.emergencyRestore', String(token || ''), String(sourceId || ''), String(adminPin || ''), acknowledged === true); }
   adminRestoreActiveFromTrash(token, adminPin = '') { return this._mutate('admin.restoreActiveFromTrash', String(token || ''), String(adminPin || '')); }
   adminApplyProtections(token, adminPin = '') { return this._mutate('admin.applyProtections', String(token || ''), String(adminPin || '')); }
