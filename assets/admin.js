@@ -1,5 +1,9 @@
 export function createAdminModule(ctx) {
   const state = {loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''};
+  let archiveFocusHandler = null;
+  let archiveVisibilityHandler = null;
+  let archiveRefreshBusy = false;
+  let archiveLastAutoCheckAt = 0;
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
   const token = () => ctx.getToken();
@@ -8,6 +12,7 @@ export function createAdminModule(ctx) {
 
   function resetForLogout() {
     Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''});
+    detachArchiveAutoHealth_();
   }
 
   function fmt(value) { return esc(value || '-'); }
@@ -25,6 +30,29 @@ export function createAdminModule(ctx) {
   function countArray(value) { return Array.isArray(value) ? value.length : 0; }
   function fmtDateTime(value) { if (!value) return '-'; const d = new Date(value); return Number.isNaN(d.getTime()) ? esc(value) : esc(new Intl.DateTimeFormat('id-ID',{dateStyle:'medium',timeStyle:'short'}).format(d)); }
   function backupKindLabel(kind) { return ({DAILY:'Harian',MONTHLY:'Bulanan',PRECHANGE:'Sebelum Perubahan',RECOVERY:'Pemulihan'})[kind] || kind || '-'; }
+
+  function archiveMounted_() { return Boolean(document.getElementById('archiveBody')); }
+  function restoreScroll_(x,y) { requestAnimationFrame(() => window.scrollTo(x,y)); }
+  function detachArchiveAutoHealth_() {
+    if (archiveFocusHandler) window.removeEventListener('focus',archiveFocusHandler);
+    if (archiveVisibilityHandler) document.removeEventListener('visibilitychange',archiveVisibilityHandler);
+    archiveFocusHandler = null;
+    archiveVisibilityHandler = null;
+  }
+  function attachArchiveAutoHealth_() {
+    detachArchiveAutoHealth_();
+    const run = () => {
+      if (!archiveMounted_() || document.hidden) return;
+      const now = Date.now();
+      if (now - archiveLastAutoCheckAt < 1500) return;
+      archiveLastAutoCheckAt = now;
+      refreshResilienceState_({silent:true,preserveScroll:true}).catch(() => {});
+    };
+    archiveFocusHandler = run;
+    archiveVisibilityHandler = run;
+    window.addEventListener('focus',archiveFocusHandler);
+    document.addEventListener('visibilitychange',archiveVisibilityHandler);
+  }
 
 
   function masterSheetLabel(name) {
@@ -79,7 +107,7 @@ export function createAdminModule(ctx) {
       catch (error) { ctx.showToast(error.message,'error'); }
       finally { event.currentTarget.disabled = false; }
     });
-    try { await bootstrap(); drawHome(); }
+    try { await bootstrap(true); drawHome(); }
     catch (error) { document.getElementById('adminHomeBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
   }
 
@@ -103,9 +131,18 @@ export function createAdminModule(ctx) {
   function drawBackupHomeAlert_() {
     const r = state.resilience || {};
     if (!r || !Object.keys(r).length) return `<div class="system-alert warning"><strong>Backup Master belum dikonfigurasi</strong><span>Buka menu Arsip untuk mengaktifkan backup otomatis.</span></div>`;
-    const safe = String(r.status || '') === 'AMAN';
+    const missing = Array.isArray(r.structure?.missing) ? r.structure.missing.length : 0;
+    const dataIssues = Array.isArray(r.dataHealth?.issues) ? r.dataHealth.issues.length : 0;
+    const safe = String(r.status || '') === 'AMAN' && missing === 0 && dataIssues === 0;
     const last = r.lastDaily ? fmtDateTime(r.lastDaily.createdAt) : 'Belum tersedia';
-    return `<div class="system-alert ${safe?'success':'warning'}"><strong>Backup Master: ${esc(r.status || 'Belum siap')}</strong><span>Backup harian terakhir: ${last}. ${safe?'Cadangan otomatis aktif.':'Periksa menu Arsip untuk detail.'}</span></div>`;
+    if (!safe) {
+      const parts = [];
+      if (missing) parts.push(`${missing} sheet sistem perlu dipulihkan`);
+      if (dataIssues) parts.push(`${dataIssues} data perlu diperiksa`);
+      if (!parts.length) parts.push('backup atau proteksi perlu perhatian');
+      return `<div class="system-alert warning"><strong>Ketahanan Data perlu perhatian</strong><span>${esc(parts.join(' • '))}. Buka menu Arsip untuk langkah pemulihan. Backup harian terakhir: ${last}.</span></div>`;
+    }
+    return `<div class="system-alert success"><strong>Ketahanan Data: AMAN</strong><span>Struktur, data, dan backup otomatis dalam kondisi baik. Backup harian terakhir: ${last}.</span></div>`;
   }
 
   async function renderCorrections() {
@@ -193,6 +230,7 @@ export function createAdminModule(ctx) {
     };
     document.getElementById('archiveRefresh')?.addEventListener('click',load);
     await load();
+    attachArchiveAutoHealth_();
   }
 
   function drawArchive() {
@@ -309,8 +347,8 @@ export function createAdminModule(ctx) {
     document.getElementById('openBackupFolder')?.addEventListener('click',() => window.open(r.folders.root.url,'_blank','noopener'));
     document.getElementById('openLastRecovery')?.addEventListener('click',() => { if (lastRecovery?.recoveryUrl) window.open(lastRecovery.recoveryUrl,'_blank','noopener'); });
     document.getElementById('applyMasterProtection')?.addEventListener('click',applyMasterProtections_);
-    document.getElementById('refreshStructureHealth')?.addEventListener('click',refreshResilienceState_);
-    document.getElementById('refreshDataHealth')?.addEventListener('click',refreshResilienceState_);
+    document.getElementById('refreshStructureHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
+    document.getElementById('refreshDataHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('restoreProductionTrash')?.addEventListener('click',restoreProductionFromTrash_);
     document.getElementById('compareMasterCells')?.addEventListener('click',() => openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value,false));
     document.getElementById('createRecoveryLab')?.addEventListener('click',createRecoveryLab_);
@@ -330,10 +368,18 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-lab-emergency]').forEach(button=>button.addEventListener('click',emergencyRestoreLab_));
   }
 
-  async function refreshResilienceState_() {
-    const health = await api().adminResilienceHealth(token());
-    state.resilience = health.data?.health || null;
-    drawArchive();
+  async function refreshResilienceState_({silent=false,preserveScroll=true}={}) {
+    if (archiveRefreshBusy) return;
+    archiveRefreshBusy = true;
+    const x = window.scrollX;
+    const y = window.scrollY;
+    try {
+      await refreshResilienceState_({silent:true,preserveScroll:true});
+      if (preserveScroll) restoreScroll_(x,y);
+      if (!silent) ctx.showToast('Kesehatan data diperbarui.','success');
+    } finally {
+      archiveRefreshBusy = false;
+    }
   }
 
   async function restoreMissingProductionSheet_(sheetName,sourceId) {
@@ -342,7 +388,7 @@ export function createAdminModule(ctx) {
     try {
       await api().adminRestoreMissingSheet(token(),sourceId,sheetName,pin);
       ctx.showToast(`${systemSheetLabel(sheetName)} berhasil dipulihkan.`,'success',6000);
-      await refreshResilienceState_();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',7000); }
   }
 
@@ -354,7 +400,7 @@ export function createAdminModule(ctx) {
       const response = await api().adminRestoreSheetContent(token(),sourceId,sheetName,pin);
       const restore = response.data?.restore || {};
       ctx.showToast(`${Number(restore.restoredRows||0)} data ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menghapus data baru.`,'success',8000);
-      await refreshResilienceState_();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',8000); }
   }
 
@@ -365,7 +411,7 @@ export function createAdminModule(ctx) {
       const response = await api().adminEmergencyRestore(token(),sourceId,pin,true);
       const consistency = response.data?.restore?.consistency || {};
       ctx.showToast(`Pemulihan darurat selesai. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',8000);
-      await refreshResilienceState_();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',8000); }
   }
 
@@ -391,7 +437,7 @@ export function createAdminModule(ctx) {
         try{
           if(testMode) await api().adminLabRestoreCells(token(),sheetName,cells,pin);
           else await api().adminRestoreMasterCells(token(),sourceId,sheetName,cells,pin);
-          ctx.closeModal();ctx.showToast(`${cells.length} cell berhasil dipulihkan.`,'success',6000);await refreshResilienceState_();
+          ctx.closeModal();ctx.showToast(`${cells.length} cell berhasil dipulihkan.`,'success',6000);await refreshResilienceState_({silent:true,preserveScroll:true});
         }catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;button.disabled=false;}
       });
     } catch (error) { ctx.showToast(error.message,'error',7000); }
@@ -400,41 +446,41 @@ export function createAdminModule(ctx) {
   async function restoreProductionFromTrash_() {
     const pin=await requestAdminPin_({title:'Pulihkan file Master dari Sampah?',message:'Sistem akan mengembalikan file Master produksi yang sama dari Sampah Google Drive. ID file tidak berubah.',confirmLabel:'Pulihkan File Asli'});
     if(!pin)return;
-    try{await api().adminRestoreActiveFromTrash(token(),pin);ctx.showToast('File Master produksi kembali aktif.','success',6000);await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error',7000);}
+    try{await api().adminRestoreActiveFromTrash(token(),pin);ctx.showToast('File Master produksi kembali aktif.','success',6000);await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
   }
 
   async function createRecoveryLab_() {
     const pin=await requestAdminPin_({title:'Buat clone uji pemulihan?',message:'Sistem akan membuat baseline dan clone kerja khusus pengujian. Master produksi tidak diubah.',confirmLabel:'Buat Clone Uji'});
     if(!pin)return;
-    try{await api().adminCreateRecoveryLab(token(),pin);ctx.showToast('Lab Uji Pemulihan berhasil dibuat.','success');await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error',7000);}
+    try{await api().adminCreateRecoveryLab(token(),pin);ctx.showToast('Lab Uji Pemulihan berhasil dibuat.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
   }
 
   async function refreshRecoveryLab_() {
-    try{const response=await api().adminRecoveryLabHealth(token());if(!state.resilience)state.resilience={};state.resilience.testLab=response.data?.lab||{};drawArchive();ctx.showToast('Status clone uji diperbarui.','success');}catch(error){ctx.showToast(error.message,'error');}
+    try{await refreshResilienceState_({silent:true,preserveScroll:true});ctx.showToast('Status clone uji diperbarui.','success');}catch(error){ctx.showToast(error.message,'error');}
   }
 
   async function resetRecoveryLab_() {
     const pin=await requestAdminPin_({title:'Reset clone uji?',message:'Clone kerja lama akan dipindahkan ke Sampah dan clone baru dibuat dari baseline sehat. Produksi tidak berubah.',confirmLabel:'Reset Clone'});
     if(!pin)return;
-    try{await api().adminLabResetWorking(token(),pin);ctx.showToast('Clone uji direset dari baseline sehat.','success');await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error');}
+    try{await api().adminLabResetWorking(token(),pin);ctx.showToast('Clone uji direset dari baseline sehat.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
   }
 
   async function restoreRecoveryLabTrash_() {
     const pin=await requestAdminPin_({title:'Pulihkan clone uji dari Sampah?',message:'File clone kerja akan dikembalikan dari Sampah Google Drive.',confirmLabel:'Pulihkan dari Sampah'});
     if(!pin)return;
-    try{await api().adminLabRestoreTrash(token(),pin);ctx.showToast('Clone uji kembali aktif.','success');await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error');}
+    try{await api().adminLabRestoreTrash(token(),pin);ctx.showToast('Clone uji kembali aktif.','success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
   }
 
   async function restoreMissingLabSheet_(sheetName) {
     const pin=await requestAdminPin_({title:`Uji restore ${systemSheetLabel(sheetName)}?`,message:'Sheet hanya akan dipulihkan pada clone uji. Master produksi tidak berubah.',confirmLabel:'Pulihkan di Clone'});
     if(!pin)return;
-    try{await api().adminLabRestoreMissingSheet(token(),sheetName,pin);ctx.showToast(`${systemSheetLabel(sheetName)} pada clone berhasil dipulihkan.`,'success');await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error');}
+    try{await api().adminLabRestoreMissingSheet(token(),sheetName,pin);ctx.showToast(`${systemSheetLabel(sheetName)} pada clone berhasil dipulihkan.`,'success');await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error');}
   }
 
   async function emergencyRestoreLab_() {
     const pin=await requestAdminPin_({title:'Uji pemulihan darurat DATABASE?',message:'Bundle transaksi pada clone uji akan dikembalikan dari baseline sehat. Produksi tidak berubah.',confirmLabel:'Pulihkan Bundle Uji'});
     if(!pin)return;
-    try{const response=await api().adminLabEmergencyRestore(token(),pin,true);const c=response.data?.restore?.consistency||{};ctx.showToast(`Pemulihan darurat clone selesai. Konsistensi: ${c.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,c.ok?'success':'warning',7000);await refreshResilienceState_();}catch(error){ctx.showToast(error.message,'error',7000);}
+    try{const response=await api().adminLabEmergencyRestore(token(),pin,true);const c=response.data?.restore?.consistency||{};ctx.showToast(`Pemulihan darurat clone selesai. Konsistensi: ${c.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,c.ok?'success':'warning',7000);await refreshResilienceState_({silent:true,preserveScroll:true});}catch(error){ctx.showToast(error.message,'error',7000);}
   }
 
   function openBackupModal_() {
@@ -446,9 +492,7 @@ export function createAdminModule(ctx) {
         await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
         ctx.closeModal();
         ctx.showToast('Backup Master berhasil dibuat.','success');
-        const health = await api().adminResilienceHealth(token());
-        state.resilience = health.data?.health || null;
-        drawArchive();
+        await refreshResilienceState_({silent:true,preserveScroll:true});
       } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
     });
   }
@@ -458,9 +502,7 @@ export function createAdminModule(ctx) {
     if (!pin) return;
     try {
       await api().adminEnsureBackupSchedule(token(),pin);
-      const health = await api().adminResilienceHealth(token());
-      state.resilience = health.data?.health || null;
-      drawArchive();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
       ctx.showToast('Backup otomatis aktif.','success');
     } catch (error) { ctx.showToast(error.message,'error'); }
   }
@@ -473,9 +515,7 @@ export function createAdminModule(ctx) {
       const recovery = response.data?.recovery || null;
       ctx.showToast('Salinan pemulihan berhasil dibuat.','success');
       if (recovery?.url) window.open(recovery.url,'_blank','noopener');
-      const health = await api().adminResilienceHealth(token());
-      state.resilience = health.data?.health || null;
-      drawArchive();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error'); }
   }
 
@@ -499,9 +539,7 @@ export function createAdminModule(ctx) {
         const restore = response.data?.restore || {};
         ctx.closeModal();
         ctx.showToast(`Pemulihan Master selesai: ${(restore.sheets||[]).map(masterSheetLabel).join(', ')}.`,'success',6000);
-        const health = await api().adminResilienceHealth(token());
-        state.resilience = health.data?.health || null;
-        drawArchive();
+        await refreshResilienceState_({silent:true,preserveScroll:true});
       } catch (error) { msg.innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
     });
   }
@@ -511,9 +549,7 @@ export function createAdminModule(ctx) {
     if (!pin) return;
     try {
       await api().adminApplyProtections(token(),pin);
-      const health = await api().adminResilienceHealth(token());
-      state.resilience = health.data?.health || null;
-      drawArchive();
+      await refreshResilienceState_({silent:true,preserveScroll:true});
       ctx.showToast('Proteksi Master diperbarui.','success');
     } catch (error) { ctx.showToast(error.message,'error'); }
   }

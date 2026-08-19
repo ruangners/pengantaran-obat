@@ -90,6 +90,14 @@ export class AppsScriptTransport {
 
   _call(method, args, mutationId) {
     if (!navigator.onLine) return Promise.reject(apiError('Perangkat sedang offline. Periksa koneksi internet lalu coba kembali.', 'OFFLINE'));
+    const resilienceLongMethods = new Set([
+      'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth','admin.recoveryLabHealth',
+      'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetContent',
+      'admin.restoreMasterCells','admin.emergencyRestore','admin.createRecoveryLab','admin.labRestoreMissingSheet',
+      'admin.labRestoreCells','admin.labEmergencyRestore','admin.labRestoreTrash','admin.labResetWorking',
+      'admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
+    ]);
+    const requestTimeoutMs = resilienceLongMethods.has(String(method || '')) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(this.endpoint)) {
       return Promise.reject(apiError('Alamat layanan belum dikonfigurasi dengan benar.', 'INVALID_BACKEND_URL'));
     }
@@ -124,8 +132,8 @@ export class AppsScriptTransport {
         this.pending.delete(id);
         cleanup();
         this.onRequestState({ active:false, method });
-        reject(apiError(`Server belum merespons setelah ${this.timeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`, 'REQUEST_TIMEOUT'));
-      }, this.timeoutMs);
+        reject(apiError(`Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`, 'REQUEST_TIMEOUT'));
+      }, requestTimeoutMs);
 
       this.pending.set(id, { resolve, reject, timer, cleanup, method });
       try {

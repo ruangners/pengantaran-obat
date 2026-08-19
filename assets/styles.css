@@ -254,3 +254,20 @@ body[data-role]{--role-accent:#0a6c76;--role-accent-soft:#eaf4f5}
 .data-health-card{border-left:3px solid #6a7f89}.data-health-card.warning-card{background:#fffdf8}
 .emergency-recovery-card{border-left:3px solid #4b6876}.emergency-recovery-card.danger-card{border-left-color:#b54149;background:#fffafa}
 .structure-issue small{display:block;color:#7d8f97;font-size:9px;margin-top:4px;line-height:1.45}
+
+/* Admin Data resilience hierarchy */
+#archiveBody .admin-section-title .eyebrow,
+#archiveBody .content-card .card-head-row .eyebrow,
+#archiveBody .recovery-guide-card .eyebrow,
+#archiveBody .recovery-lab-card .eyebrow {
+  color:#075463;
+  font-weight:950;
+  letter-spacing:.12em;
+}
+#archiveBody .emergency-recovery-card.danger-card .eyebrow {
+  color:#a7333c;
+}
+#archiveBody .content-card .card-head-row h3,
+#archiveBody .admin-section-title h2 {
+  color:#092f3b;
+}
