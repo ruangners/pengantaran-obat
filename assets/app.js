@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc11';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc11';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc11';
-import { createCourierModule } from './courier.js?v=1.0.0-rc11';
-import { createAdminModule } from './admin.js?v=1.0.0-rc11';
-import { createManagementModule } from './management.js?v=1.0.0-rc11';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc12';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc12';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc12';
+import { createCourierModule } from './courier.js?v=1.0.0-rc12';
+import { createAdminModule } from './admin.js?v=1.0.0-rc12';
+import { createManagementModule } from './management.js?v=1.0.0-rc12';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -131,6 +131,25 @@ function setRequestState({active=false}={}) {
   $('requestBar')?.classList.toggle('active',state.activeRequests > 0);
 }
 
+function setButtonBusy(button,busy,label='Memproses…') {
+  if (!button) return;
+  if (busy) {
+    if (!button.dataset.busyOriginalHtml) button.dataset.busyOriginalHtml = button.innerHTML;
+    button.dataset.busyWasDisabled = button.disabled ? '1' : '0';
+    button.disabled = true;
+    button.classList.add('is-loading');
+    button.setAttribute('aria-busy','true');
+    button.innerHTML = `<span class="button-spinner" aria-hidden="true"></span><span>${escapeHtml(label)}</span>`;
+  } else {
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+    if (button.dataset.busyOriginalHtml) { button.innerHTML = button.dataset.busyOriginalHtml; delete button.dataset.busyOriginalHtml; }
+    const wasDisabled = button.dataset.busyWasDisabled === '1';
+    delete button.dataset.busyWasDisabled;
+    button.disabled = wasDisabled;
+  }
+}
+
 function updateConnectivity() {
   const offline = !navigator.onLine;
   $('networkBanner')?.classList.toggle('hidden',!offline);
@@ -237,10 +256,10 @@ async function saveBackend() {
     return;
   }
   saveEndpoint(url);
-  $('saveBackendSetup').disabled = true;
+  setButtonBusy($('saveBackendSetup'),true,'Menyimpan…');
   showAlert($('backendModalMessage'),'Menguji koneksi…','info');
   const ok = await connectBackend(url);
-  $('saveBackendSetup').disabled = false;
+  setButtonBusy($('saveBackendSetup'),false);
   if (ok) {
     showAlert($('backendModalMessage'),'Koneksi berhasil.','info');
     setTimeout(() => { closeBackendModal(); if (state.session?.user?.role === 'ADMIN' && state.view === 'account') renderAccountPage(); },500);
@@ -304,8 +323,7 @@ async function login(event) {
   }
   const pin = $('pin').value.trim();
   if (!pin) return;
-  $('loginButton').disabled = true;
-  $('loginButton').textContent = 'Memeriksa…';
+  setButtonBusy($('loginButton'),true,'Masuk…');
   try {
     const result = await state.api.login(pin,{clientId:getClientId(),userAgent:navigator.userAgent,origin:location.origin});
     state.session = {token:result.data.token,user:result.data.user};
@@ -316,7 +334,7 @@ async function login(event) {
   } catch (error) {
     showAlert($('loginMessage'),error.message);
   } finally {
-    $('loginButton').disabled = false;
+    setButtonBusy($('loginButton'),false);
     $('loginButton').textContent = 'Masuk';
   }
 }
@@ -442,7 +460,8 @@ const farmasi = createFarmasiModule({
   closeModal,
   confirmAction,
   showToast,
-  setNavBadge
+  setNavBadge,
+  setButtonBusy
 });
 
 const courier = createCourierModule({
@@ -455,7 +474,8 @@ const courier = createCourierModule({
   openModal,
   closeModal,
   confirmAction,
-  showToast
+  showToast,
+  setButtonBusy
 });
 
 const admin = createAdminModule({
@@ -468,7 +488,8 @@ const admin = createAdminModule({
   openModal,
   closeModal,
   confirmAction,
-  showToast
+  showToast,
+  setButtonBusy
 });
 
 const management = createManagementModule({
@@ -482,6 +503,7 @@ const management = createManagementModule({
   closeModal,
   confirmAction,
   showToast,
+  setButtonBusy,
   minimumStatsSample:APP_CONFIG.statsMinimumSample
 });
 
@@ -496,14 +518,13 @@ async function applyAppUpdate() {
   const registration = state.updateRegistration || await navigator.serviceWorker.getRegistration();
   if (!registration?.waiting) { hideUpdateAvailable(); location.reload(); return; }
   state.updateRequested = true;
-  $('applyUpdateButton').disabled = true;
-  $('applyUpdateButton').textContent = 'Memperbarui…';
+  setButtonBusy($('applyUpdateButton'),true,'Memperbarui…');
   registration.waiting.postMessage({type:'SKIP_WAITING'});
 }
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc11',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc12',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {

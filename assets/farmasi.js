@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc11';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc12';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -57,15 +57,10 @@ export function createFarmasiModule(ctx) {
   }
 
   function buttonBusy(button, busy, busyText = 'Memproses…') {
+    if (typeof ctx.setButtonBusy === 'function') return ctx.setButtonBusy(button,busy,busyText);
     if (!button) return;
-    if (busy) {
-      button.dataset.originalText = button.textContent;
-      button.disabled = true;
-      button.textContent = busyText;
-    } else {
-      button.disabled = false;
-      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
-    }
+    if (busy) { button.dataset.originalText = button.textContent; button.disabled = true; button.textContent = busyText; }
+    else { button.disabled = false; if (button.dataset.originalText) button.textContent = button.dataset.originalText; }
   }
 
   async function ensureData(force = false) {

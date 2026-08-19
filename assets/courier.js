@@ -447,7 +447,8 @@ export function createCourierModule(ctx) {
     return (items || []).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   }
 
-  function setBusy(button, busy, label) {
+  function setBusy(button, busy, label = 'Memproses…') {
+    if (typeof ctx.setButtonBusy === 'function') return ctx.setButtonBusy(button,busy,label);
     if (!button) return;
     if (busy) { button.dataset.oldLabel = button.textContent; button.disabled = true; if(label) button.textContent = label; }
     else { button.disabled = false; if(button.dataset.oldLabel) button.textContent = button.dataset.oldLabel; }

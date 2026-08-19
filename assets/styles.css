@@ -269,3 +269,12 @@ body[data-role]{--role-accent:#0a6c76;--role-accent-soft:#eaf4f5}
 #archiveBody .admin-section-title h2 {
   color:#052f3b;
 }
+
+/* Interaction feedback for actions that call the backend. */
+button,.primary-btn,.secondary-btn,.warning-btn,.danger-btn,.danger-outline-btn,.mini-btn,.whatsapp-btn{transition:transform .12s ease,box-shadow .16s ease,opacity .16s ease,filter .16s ease}
+button:not(:disabled):active,.primary-btn:not(:disabled):active,.secondary-btn:not(:disabled):active,.warning-btn:not(:disabled):active,.danger-btn:not(:disabled):active,.danger-outline-btn:not(:disabled):active,.mini-btn:not(:disabled):active,.whatsapp-btn:not(:disabled):active{transform:translateY(1px) scale(.98);filter:saturate(.96)}
+button.is-loading,.primary-btn.is-loading,.secondary-btn.is-loading,.warning-btn.is-loading,.danger-btn.is-loading,.danger-outline-btn.is-loading,.mini-btn.is-loading,.whatsapp-btn.is-loading{opacity:.72!important;cursor:wait!important;pointer-events:none!important;transform:none!important;box-shadow:none!important}
+.button-spinner{width:15px;height:15px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;flex:0 0 auto;animation:button-spin .68s linear infinite}
+@keyframes button-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){button,.primary-btn,.secondary-btn,.warning-btn,.danger-btn,.danger-outline-btn,.mini-btn,.whatsapp-btn{transition:none!important}.button-spinner{animation-duration:1.25s}}
+

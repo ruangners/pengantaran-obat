@@ -8,6 +8,12 @@ export function createAdminModule(ctx) {
   const api = () => ctx.getApi();
   const token = () => ctx.getToken();
   const page = () => document.getElementById('pageContent');
+  const setBusy = (button,busy,label='Memproses…') => {
+    if (typeof ctx.setButtonBusy === 'function') return ctx.setButtonBusy(button,busy,label);
+    if (!button) return;
+    if (busy) { button.dataset.oldLabel=button.textContent; button.disabled=true; button.textContent=label; }
+    else { button.disabled=false; if(button.dataset.oldLabel) button.textContent=button.dataset.oldLabel; }
+  };
   const statusOptions = ['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
 
   function resetForLogout() {
@@ -102,10 +108,10 @@ export function createAdminModule(ctx) {
   async function renderHome() {
     page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">ADMIN DATA</div><h1>Pusat Pemeliharaan Data</h1><p>Koreksi data, arsip, master, dan audit dalam satu tempat.</p></div><div class="hero-actions"><button id="adminHomeRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="adminHomeBody"><div class="inline-loading">Memuat…</div></section>`;
     document.getElementById('adminHomeRefresh')?.addEventListener('click',async event => {
-      event.currentTarget.disabled = true;
+      setBusy(event.currentTarget,true,'Memuat…');
       try { await bootstrap(true); drawHome(); ctx.showToast('Data Admin diperbarui.','success'); }
       catch (error) { ctx.showToast(error.message,'error'); }
-      finally { event.currentTarget.disabled = false; }
+      finally { setBusy(event.currentTarget,false); }
     });
     try { await bootstrap(true); drawHome(); }
     catch (error) { document.getElementById('adminHomeBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
@@ -202,7 +208,7 @@ export function createAdminModule(ctx) {
       const pin = document.getElementById('adminCorrectionPin').value.trim();
       if (!note) { document.getElementById('adminCorrectionMsg').innerHTML = '<div class="alert error">Alasan koreksi wajib diisi.</div>'; return; }
       if (!pin) { document.getElementById('adminCorrectionMsg').innerHTML = '<div class="alert error">Masukkan PIN Admin untuk melanjutkan.</div>'; return; }
-      button.disabled = true;
+      setBusy(button,true,'Menyimpan…');
       try {
         await api().adminUpdateStatus(token(),id,status,note,pin);
         ctx.closeModal();
@@ -210,7 +216,7 @@ export function createAdminModule(ctx) {
         await loadRows();
       } catch (error) {
         document.getElementById('adminCorrectionMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`;
-        button.disabled = false;
+        setBusy(button,false);
       }
     });
   }
@@ -232,7 +238,7 @@ export function createAdminModule(ctx) {
         drawArchive();
       } catch (error) { document.getElementById('archiveBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
     };
-    document.getElementById('archiveRefresh')?.addEventListener('click',load);
+    document.getElementById('archiveRefresh')?.addEventListener('click',async event=>{const button=event.currentTarget;setBusy(button,true,'Memuat…');try{await load();}finally{setBusy(button,false);}});
     await load();
     attachArchiveAutoHealth_();
   }
@@ -340,21 +346,21 @@ export function createAdminModule(ctx) {
       </div><div class="system-alert info"><strong>Prinsip aman</strong><span>Pulihkan sekecil mungkin: cell untuk salah hapus cell, satu sheet untuk sheet sistem, dan bundle transaksi hanya untuk keadaan darurat.</span></div></div>`;
 
     document.getElementById('backupNow')?.addEventListener('click',openBackupModal_);
-    document.getElementById('backupSchedule')?.addEventListener('click',ensureBackupSchedule_);
+    document.getElementById('backupSchedule')?.addEventListener('click',event=>ensureBackupSchedule_(event.currentTarget));
     document.getElementById('openBackupFolder')?.addEventListener('click',() => window.open(r.folders.root.url,'_blank','noopener'));
     document.getElementById('openLastRecovery')?.addEventListener('click',() => { if (lastRecovery?.recoveryUrl) window.open(lastRecovery.recoveryUrl,'_blank','noopener'); });
-    document.getElementById('applyMasterProtection')?.addEventListener('click',applyMasterProtections_);
+    document.getElementById('applyMasterProtection')?.addEventListener('click',event=>applyMasterProtections_(event.currentTarget));
     document.getElementById('refreshStructureHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('refreshDataHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('restoreProductionTrash')?.addEventListener('click',restoreProductionFromTrash_);
-    document.getElementById('compareMasterCells')?.addEventListener('click',() => openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value));
+    document.getElementById('compareMasterCells')?.addEventListener('click',async event => { const button=event.currentTarget; setBusy(button,true,'Membandingkan…'); try { await openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value); } finally { setBusy(button,false); } });
     root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
     root.querySelectorAll('[data-open-recovery]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openRecovery,'_blank','noopener')));
-    root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName)));
+    root.querySelectorAll('[data-recovery]').forEach(button => button.addEventListener('click',() => prepareRecovery_(button.dataset.recovery,button.dataset.recoveryName,button)));
     root.querySelectorAll('[data-restore-master]').forEach(button => button.addEventListener('click',() => openRestoreMaster_(button.dataset.restoreMaster,button.dataset.restoreName,recoverableSheets)));
-    root.querySelectorAll('[data-restore-missing]').forEach(button=>button.addEventListener('click',()=>restoreMissingProductionSheet_(button.dataset.restoreMissing,button.dataset.sourceId)));
-    root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId)));
-    root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore)));
+    root.querySelectorAll('[data-restore-missing]').forEach(button=>button.addEventListener('click',()=>restoreMissingProductionSheet_(button.dataset.restoreMissing,button.dataset.sourceId,button)));
+    root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId,button)));
+    root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore,button)));
   }
 
   async function refreshResilienceState_({silent=false,preserveScroll=true}={}) {
@@ -387,37 +393,43 @@ export function createAdminModule(ctx) {
     }
   }
 
-  async function restoreMissingProductionSheet_(sheetName,sourceId) {
+  async function restoreMissingProductionSheet_(sheetName,sourceId,triggerButton=null) {
     const pin = await requestAdminPin_({title:`Pulihkan ${systemSheetLabel(sheetName)}?`,message:`Sheet ${sheetName} akan dibuat kembali dari backup sehat yang dipilih sistem. Data lain tidak disentuh.`,confirmLabel:'Ya, Pulihkan Sheet'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Memulihkan…');
     try {
       await api().adminRestoreMissingSheet(token(),sourceId,sheetName,pin);
       ctx.showToast(`${systemSheetLabel(sheetName)} berhasil dipulihkan.`,'success',6000);
       await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',7000); }
+    finally { setBusy(triggerButton,false); }
   }
 
-  async function restoreProductionSheetContent_(sheetName,sourceId) {
+  async function restoreProductionSheetContent_(sheetName,sourceId,triggerButton=null) {
     const issue = (state.resilience?.dataHealth?.issues || []).find(item=>String(item.name||'')===String(sheetName||''));
     const pin = await requestAdminPin_({title:`Pulihkan isi ${systemSheetLabel(sheetName)}?`,message:`Data yang hilang akan dikembalikan dari Backup Sehat Terakhir${issue?.recommendedSource?.name?` (${issue.recommendedSource.name})`:''}. Data baru yang sudah ada tidak akan dihapus.`,confirmLabel:'Ya, Pulihkan Isi'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Memulihkan…');
     try {
       const response = await api().adminRestoreSheetContent(token(),sourceId,sheetName,pin);
       const restore = response.data?.restore || {};
       ctx.showToast(`${Number(restore.restoredRows||0)} data ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menghapus data baru.`,'success',8000);
       await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',8000); }
+    finally { setBusy(triggerButton,false); }
   }
 
-  async function emergencyRestoreProduction_(sourceId) {
+  async function emergencyRestoreProduction_(sourceId,triggerButton=null) {
     const pin = await requestAdminPin_({title:'Pemulihan darurat data transaksi?',message:'DATABASE dan sheet transaksi terkait akan dikembalikan bersama-sama dari satu checkpoint/backup agar konsisten. Data setelah waktu sumber pemulihan mungkin perlu diverifikasi.',confirmLabel:'Saya Paham, Pulihkan'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Memulihkan…');
     try {
       const response = await api().adminEmergencyRestore(token(),sourceId,pin,true);
       const consistency = response.data?.restore?.consistency || {};
       ctx.showToast(`Pemulihan darurat selesai. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',8000);
       await refreshResilienceState_({silent:true,preserveScroll:true});
     } catch (error) { ctx.showToast(error.message,'error',8000); }
+    finally { setBusy(triggerButton,false); }
   }
 
   async function openCellComparison_(sourceId,sheetName) {
@@ -438,13 +450,21 @@ export function createAdminModule(ctx) {
         const msg=document.getElementById('cellRestoreMsg');
         if(!cells.length){msg.innerHTML='<div class="alert error">Pilih minimal satu cell.</div>';return;}
         if(!pin){msg.innerHTML='<div class="alert error">PIN Admin wajib diisi.</div>';return;}
-        const button=document.getElementById('cellRestoreSave');button.disabled=true;
+        const button=document.getElementById('cellRestoreSave');setBusy(button,true,'Memulihkan…');
         try{
           const response = await api().adminRestoreMasterCells(token(),sourceId,sheetName,cells,pin);
-          const verification = response.data?.restore?.verification || {};
-          if (verification.ok !== true) throw new Error('Pemulihan cell belum lolos verifikasi backend.');
-          ctx.closeModal();ctx.showToast(`${cells.length} cell berhasil dipulihkan.`,'success',6000);await refreshResilienceState_({silent:true,preserveScroll:true});
-        }catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;button.disabled=false;}
+          const restore = response.data?.restore || {};
+          const verification = restore.verification || {};
+          const restored = Array.isArray(restore.restoredCells) ? restore.restoredCells : [];
+          const failed = Array.isArray(restore.failedCells) ? restore.failedCells : [];
+          ctx.closeModal();
+          if (failed.length) {
+            ctx.showToast(`${restored.length} cell berhasil dipulihkan; ${failed.length} cell belum lolos verifikasi: ${failed.map(item=>item.a1 + (item.field?` (${item.field})`:'' )).join(', ')}.`,'warning',9000);
+          } else {
+            ctx.showToast(`${restored.length || cells.length} cell berhasil dipulihkan dan diverifikasi.`,'success',6500);
+          }
+          await refreshResilienceState_({silent:true,preserveScroll:true});
+        }catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;setBusy(button,false);}
       });
     } catch (error) { ctx.showToast(error.message,'error',7000); }
   }
@@ -459,29 +479,32 @@ export function createAdminModule(ctx) {
     ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">BACKUP MASTER</div><h3>Buat Backup Sekarang</h3><p>Gunakan sebelum perubahan penting pada Master Spreadsheet.</p></div><button class="modal-x" data-modal-close>×</button></div><div class="field"><label for="backupNote">Catatan <span class="optional">opsional</span></label><textarea id="backupNote" rows="3" placeholder="Contoh: sebelum menambah pegawai atau mengganti PIN"></textarea></div><div id="backupModalMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="backupSave" class="primary-btn">Buat Backup</button></div>`);
     document.getElementById('backupSave')?.addEventListener('click',async() => {
       const button = document.getElementById('backupSave');
-      button.disabled = true;
+      setBusy(button,true,'Membuat Backup…');
       try {
         await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
         ctx.closeModal();
         ctx.showToast('Backup Master berhasil dibuat. Daftar backup diperbarui.','success');
         await refreshResilienceState_({silent:true,preserveScroll:true});
-      } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
+      } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; setBusy(button,false); }
     });
   }
 
-  async function ensureBackupSchedule_() {
+  async function ensureBackupSchedule_(triggerButton=null) {
     const pin = await requestAdminPin_({title:'Aktifkan backup otomatis?',message:'Sistem akan memastikan jadwal backup otomatis aktif. Tidak ada data transaksi yang diubah.',confirmLabel:'Aktifkan'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Mengaktifkan…');
     try {
       await api().adminEnsureBackupSchedule(token(),pin);
       await refreshResilienceState_({silent:true,preserveScroll:true});
       ctx.showToast('Backup otomatis aktif.','success');
     } catch (error) { ctx.showToast(error.message,'error'); }
+    finally { setBusy(triggerButton,false); }
   }
 
-  async function prepareRecovery_(backupId,backupName) {
+  async function prepareRecovery_(backupId,backupName,triggerButton=null) {
     const pin = await requestAdminPin_({title:'Siapkan salinan pemulihan?',message:`Sistem akan menyalin ${backupName || 'backup terpilih'} ke folder RECOVERY. Master aktif tidak akan diubah.`,confirmLabel:'Siapkan Salinan'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Menyiapkan…');
     try {
       const response = await api().adminPrepareRecovery(token(),backupId,pin);
       const recovery = response.data?.recovery || null;
@@ -505,25 +528,27 @@ export function createAdminModule(ctx) {
       const msg = document.getElementById('restoreMasterMsg');
       if (!selected.length) { msg.innerHTML = '<div class="alert error">Pilih minimal satu bagian Master.</div>'; return; }
       if (!pin) { msg.innerHTML = '<div class="alert error">PIN Admin wajib diisi.</div>'; return; }
-      button.disabled = true;
+      setBusy(button,true,'Memulihkan…');
       try {
         const response = await api().adminRestoreMaster(token(),backupId,selected,pin);
         const restore = response.data?.restore || {};
         ctx.closeModal();
         ctx.showToast(`Pemulihan Master selesai: ${(restore.sheets||[]).map(masterSheetLabel).join(', ')}.`,'success',6000);
         await refreshResilienceState_({silent:true,preserveScroll:true});
-      } catch (error) { msg.innerHTML = `<div class="alert error">${esc(error.message)}</div>`; button.disabled = false; }
+      } catch (error) { msg.innerHTML = `<div class="alert error">${esc(error.message)}</div>`; setBusy(button,false); }
     });
   }
 
-  async function applyMasterProtections_() {
+  async function applyMasterProtections_(triggerButton=null) {
     const pin = await requestAdminPin_({title:'Perbaiki proteksi Master?',message:'Sistem akan menerapkan ulang proteksi edit manual pada sheet kritis. Operasional aplikasi tetap dapat berjalan melalui backend.',confirmLabel:'Terapkan Proteksi'});
     if (!pin) return;
+    setBusy(triggerButton,true,'Memperbaiki…');
     try {
       await api().adminApplyProtections(token(),pin);
       await refreshResilienceState_({silent:true,preserveScroll:true});
       ctx.showToast('Proteksi Master diperbarui.','success');
     } catch (error) { ctx.showToast(error.message,'error'); }
+    finally { setBusy(triggerButton,false); }
   }
 
   async function renderMaster() {
@@ -532,7 +557,7 @@ export function createAdminModule(ctx) {
       try { const response = await api().adminRefreshMaster(token()); state.master = response.data?.master || {}; drawMaster(); }
       catch (error) { document.getElementById('masterBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
     };
-    document.getElementById('masterRefresh')?.addEventListener('click',load);
+    document.getElementById('masterRefresh')?.addEventListener('click',async event=>{const button=event.currentTarget;setBusy(button,true,'Memuat…');try{await load();}finally{setBusy(button,false);}});
     await load();
   }
 
@@ -553,7 +578,7 @@ export function createAdminModule(ctx) {
     page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">AUDIT</div><h1>Jejak Aktivitas</h1><p>Perubahan data dan aktivitas penting tercatat untuk penelusuran.</p></div><div class="hero-actions"><button id="auditRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section"><div class="toolbar-card audit-toolbar"><div class="search-box"><span>⌕</span><input id="auditSearch" placeholder="Cari Kode/ID, petugas, role, atau aksi…"></div><select id="auditRole"><option value="">Semua Role</option><option>FARMASI</option><option>KURIR</option><option>ADMIN</option><option>MANAJEMEN</option></select></div><div id="auditBody" class="content-card"><div class="inline-loading">Memuat…</div></div></section>`;
     document.getElementById('auditSearch')?.addEventListener('input',drawAudit);
     document.getElementById('auditRole')?.addEventListener('change',drawAudit);
-    document.getElementById('auditRefresh')?.addEventListener('click',async() => { await loadAudit(); ctx.showToast('Audit diperbarui.','success'); });
+    document.getElementById('auditRefresh')?.addEventListener('click',async event => { const button=event.currentTarget; setBusy(button,true,'Memuat…'); try { await loadAudit(); ctx.showToast('Audit diperbarui.','success'); } finally { setBusy(button,false); } });
     await loadAudit();
   }
 

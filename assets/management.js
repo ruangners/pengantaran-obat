@@ -1,9 +1,10 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc11';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc12';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
   const token = () => ctx.getToken();
   const page = () => document.getElementById('pageContent');
+  const setBusy = (button,busy,label='Memproses…') => { if (typeof ctx.setButtonBusy === 'function') return ctx.setButtonBusy(button,busy,label); if(!button)return; if(busy){button.dataset.oldLabel=button.textContent;button.disabled=true;button.textContent=label;}else{button.disabled=false;if(button.dataset.oldLabel)button.textContent=button.dataset.oldLabel;} };
   const MIN_STATS_SAMPLE = Math.max(2, Number(ctx.minimumStatsSample || 10));
 
   const state = {
@@ -112,16 +113,17 @@ export function createManagementModule(ctx) {
         const end = document.getElementById('mgmtEnd');
         if (start) start.value = state.start;
         if (end) end.value = state.end;
-        if (preset !== 'custom') onReload();
+        if (preset !== 'custom') { setBusy(button,true,'Memuat…'); Promise.resolve(onReload()).finally(()=>setBusy(button,false)); }
       };
     });
     const apply = document.getElementById('mgmtApply');
-    if (apply) apply.onclick = () => {
+    if (apply) apply.onclick = async () => {
       state.preset = 'custom';
       state.start = document.getElementById('mgmtStart').value;
       state.end = document.getElementById('mgmtEnd').value;
       state.basis = document.getElementById('mgmtBasis').value;
-      onReload();
+      setBusy(apply,true,'Memuat…');
+      try { await onReload(); } finally { setBusy(apply,false); }
     };
     const basis = document.getElementById('mgmtBasis');
     if (basis) basis.onchange = () => { state.basis = basis.value; };
@@ -142,13 +144,13 @@ export function createManagementModule(ctx) {
 
   async function refreshCurrent(draw) {
     const button = document.getElementById('mgmtRefresh');
-    if (button) { button.disabled = true; button.textContent = 'Memuat…'; }
+    if (button) setBusy(button,true,'Memuat…');
     try {
       await ensureData(true);
       draw();
       ctx.showToast('Data Manajemen diperbarui.', 'success');
     } catch (error) { ctx.showToast(error.message, 'error'); }
-    finally { if (button) { button.disabled = false; button.textContent = '↻ Segarkan'; } }
+    finally { if (button) setBusy(button,false); }
   }
 
   function timeInsight(value, label, description = '') {
@@ -337,19 +339,19 @@ export function createManagementModule(ctx) {
   }
 
   async function downloadReport(d, button) {
-    const previous = button.textContent; button.disabled = true; button.textContent = 'Menyiapkan PDF…';
+    setBusy(button,true,'Menyiapkan PDF…');
     try {
       const blob = await createReportBlob(d);
       downloadPdfBlob(blob, reportFilename(d));
       ctx.showToast('PDF berhasil dibuat.', 'success');
     } catch (error) { ctx.showToast(error.message || 'PDF tidak dapat dibuat.', 'error'); }
-    finally { button.disabled = false; button.textContent = previous; }
+    finally { setBusy(button,false); }
   }
 
   async function openReportPdf(d, button) {
     const preview = window.open('', '_blank');
     if (!preview) return ctx.showToast('Jendela laporan diblokir browser. Izinkan pop-up untuk aplikasi ini.', 'error');
-    const previous = button.textContent; button.disabled = true; button.textContent = 'Menyiapkan PDF…';
+    setBusy(button,true,'Menyiapkan PDF…');
     try {
       preview.document.write('<!doctype html><title>Menyiapkan laporan…</title><body style="font-family:Arial;padding:28px">Menyiapkan laporan PDF…</body>');
       const blob = await createReportBlob(d);
@@ -357,7 +359,7 @@ export function createManagementModule(ctx) {
       preview.location.replace(url);
       setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
     } catch (error) { preview.close(); ctx.showToast(error.message || 'PDF tidak dapat dibuat.', 'error'); }
-    finally { button.disabled = false; button.textContent = previous; }
+    finally { setBusy(button,false); }
   }
 
 
