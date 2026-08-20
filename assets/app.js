@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc14a';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc14a';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc14a';
-import { createCourierModule } from './courier.js?v=1.0.0-rc14a';
-import { createAdminModule } from './admin.js?v=1.0.0-rc14a';
-import { createManagementModule } from './management.js?v=1.0.0-rc14a';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc15';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc15';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc15';
+import { createCourierModule } from './courier.js?v=1.0.0-rc15';
+import { createAdminModule } from './admin.js?v=1.0.0-rc15';
+import { createManagementModule } from './management.js?v=1.0.0-rc15';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -331,6 +331,7 @@ async function login(event) {
     sessionStorage.setItem(APP_CONFIG.sessionStorageKey,JSON.stringify(state.session));
     $('pin').value = '';
     showApp();
+    if (result.data?.recoveryOnly) showToast('Mode Pemulihan Akses aktif. Pulihkan Akun & PIN dari Backup Sehat Terakhir sebelum kembali ke operasional normal.','warning',10000);
   } catch (error) {
     showAlert($('loginMessage'),error.message);
   } finally {
@@ -437,9 +438,10 @@ function openView(view) {
 
 function renderAccountPage() {
   const user = state.session.user;
+  const recoveryNote = user.recoveryOnly ? `<div class="system-alert warning"><strong>Mode Pemulihan Akses</strong><span>Sesi ini hanya untuk pemulihan. Pulihkan Akun & PIN terlebih dahulu agar akses Admin kembali normal.</span></div>` : '';
   const adminTechnical = user.role === 'ADMIN' ? `<div class="account-section"><div class="section-heading"><div><h2>Koneksi Sistem</h2><p>Informasi teknis hanya tersedia untuk Admin Data.</p></div></div><div class="grid grid-2"><div class="card account-card"><span>Frontend</span><strong>${escapeHtml(APP_CONFIG.version)}</strong><small>PWA</small></div><div class="card account-card"><span>Backend</span><strong>${escapeHtml(state.backendInfo?.version || '-')}</strong><small>${escapeHtml(state.backendInfo?.apiContract || APP_CONFIG.apiContract)}</small></div><div class="card account-card"><span>Status</span><strong>${state.backendReady?'Terhubung':'Tidak terhubung'}</strong><small>${navigator.onLine?'Perangkat online':'Perangkat offline'}</small></div><div class="card account-card"><span>Backend aktif</span><strong class="technical-url">${escapeHtml(getEndpoint() || '-')}</strong><small>${APP_CONFIG.backendUrl?'Konfigurasi produksi':'Konfigurasi browser'}</small></div></div><div class="account-actions"><button id="accountBackendSettings" class="secondary-btn">Pengaturan Koneksi</button>${localStorage.getItem(APP_CONFIG.backendStorageKey) && APP_CONFIG.backendUrl ? '<button id="accountResetBackend" class="secondary-btn">Kembali ke Backend Produksi</button>' : ''}</div></div>` : '';
 
-  $('pageContent').innerHTML = `<section class="account-hero"><div class="account-avatar">${escapeHtml(initials(user.name))}</div><div><div class="eyebrow">AKUN</div><h1>${escapeHtml(user.name)}</h1><p>${escapeHtml(displayRole(user.role))}${user.email?` • ${escapeHtml(user.email)}`:''}</p></div></section><section class="section account-layout"><div class="card account-main"><div class="account-detail"><span>Nama</span><strong>${escapeHtml(user.name)}</strong></div><div class="account-detail"><span>Role</span><strong>${escapeHtml(displayRole(user.role))}</strong></div>${user.email?`<div class="account-detail"><span>Email</span><strong>${escapeHtml(user.email)}</strong></div>`:''}</div>${adminTechnical}<button id="accountLogout" class="danger-outline-btn account-logout">Keluar dari Aplikasi</button></section>`;
+  $('pageContent').innerHTML = `<section class="account-hero"><div class="account-avatar">${escapeHtml(initials(user.name))}</div><div><div class="eyebrow">AKUN</div><h1>${escapeHtml(user.name)}</h1><p>${escapeHtml(displayRole(user.role))}${user.email?` • ${escapeHtml(user.email)}`:''}</p></div></section>${recoveryNote}<section class="section account-layout"><div class="card account-main"><div class="account-detail"><span>Nama</span><strong>${escapeHtml(user.name)}</strong></div><div class="account-detail"><span>Role</span><strong>${escapeHtml(displayRole(user.role))}</strong></div>${user.email?`<div class="account-detail"><span>Email</span><strong>${escapeHtml(user.email)}</strong></div>`:''}</div>${adminTechnical}<button id="accountLogout" class="danger-outline-btn account-logout">Keluar dari Aplikasi</button></section>`;
   $('accountLogout')?.addEventListener('click',logout);
   $('accountBackendSettings')?.addEventListener('click',openBackendModal);
   $('accountResetBackend')?.addEventListener('click',async() => {
@@ -489,7 +491,8 @@ const admin = createAdminModule({
   closeModal,
   confirmAction,
   showToast,
-  setButtonBusy
+  setButtonBusy,
+  refreshSession:() => recheckSession(true)
 });
 
 const management = createManagementModule({
@@ -524,7 +527,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc14a',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc15',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {

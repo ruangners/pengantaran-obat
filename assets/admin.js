@@ -120,6 +120,12 @@ export function createAdminModule(ctx) {
   function drawHome() {
     const root = document.getElementById('adminHomeBody');
     if (!root) return;
+    const currentUser = typeof ctx.getUser === 'function' ? ctx.getUser() : null;
+    if (currentUser?.recoveryOnly) {
+      root.innerHTML = `<div class="system-alert warning"><strong>Mode Pemulihan Akses aktif</strong><span>Akun & PIN tidak dapat digunakan untuk autentikasi normal. Sesi ini hanya untuk pemulihan. Pulihkan <b>Akun & PIN</b> dari Backup Sehat Terakhir.</span></div><div class="admin-action-grid clean-admin-actions"><button id="goRecoveryArchive" class="admin-action-card"><b>▣ Buka Backup & Pemulihan</b><span>Masuk ke Arsip, pilih backup sehat, lalu Pulihkan Master → Akun & PIN.</span></button></div>`;
+      document.getElementById('goRecoveryArchive')?.addEventListener('click',()=>ctx.navigate('archive'));
+      return;
+    }
     const s = state.summary || {};
     const missing = Number(s.missingMetadata || 0);
     root.innerHTML = `<div class="grid grid-4">${metric('Data Aktif',Number(s.activeRecords||0),'Masih dalam proses')}${metric('Metadata',Number(s.metadataRecords||0),missing?`${missing} perlu perhatian`:'Sinkron')}${metric('Riwayat Pengantaran',Number(s.deliveryHistoryRecords||0),'Catatan perjalanan pengiriman')}${metric('Audit',Number(s.auditRecords||0),'Aktivitas tercatat')}</div>
@@ -251,6 +257,7 @@ export function createAdminModule(ctx) {
     const config = a.config || {};
     const archiveUnavailable = a.unavailable === true;
     const r = state.resilience || {};
+    const emergencyAccess = r.emergencyAccess || {};
     const counts = r.counts || {};
     const trigger = r.trigger || {};
     const checkpoint = r.checkpoint || {};
@@ -291,6 +298,7 @@ export function createAdminModule(ctx) {
     ].join('');
 
     const fileStateBlock = masterFile.trashed ? `<div class="content-card structure-health-card warning-card"><div class="card-head-row"><div><span class="eyebrow">FILE MASTER</span><h3>⚠ File Master berada di Sampah Drive</h3><p>Pulihkan file asli terlebih dahulu. Ini lebih aman daripada membuat Master baru dari backup.</p></div><button id="restoreProductionTrash" class="warning-btn">Pulihkan File Asli</button></div></div>` : '';
+    const emergencyAccessBlock = emergencyAccess.recoveryRequired ? `<div class="content-card emergency-recovery-card danger-card"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN AKSES DARURAT</span><h3>${emergencyAccess.ready?'🚨 Mode Pemulihan Akses siap digunakan':'🚨 Akun & PIN rusak dan kredensial pemulihan belum siap'}</h3><p>${emergencyAccess.ready?'Akun Admin normal tidak dapat digunakan. Gunakan PIN Admin terakhir yang sah hanya untuk memulihkan <b>Akun & PIN</b> dari Backup Sehat Terakhir.':'Jangan lanjutkan perubahan pada Master. Hash PIN pemulihan belum tersedia di Script Properties sehingga pemulihan otomatis Akun & PIN tidak dapat diotorisasi.'}</p></div></div><div class="system-alert warning compact-alert"><strong>${emergencyAccess.ready?'Akses dibatasi hanya untuk pemulihan.':'Intervensi teknis diperlukan.'}</strong><span>${emergencyAccess.ready?`Alasan: ${esc(emergencyAccess.accessReason||'AKSES tidak sehat')} • Hash darurat tersedia: ${Number(emergencyAccess.storedCredentials||0)}.`:'Pulihkan AKSES dari backup secara administratif, lalu jalankan setupDataResilience() saat Admin aktif kembali untuk menyiapkan perlindungan darurat.'}</span></div></div>` : '';
     const structureCard = `<div class="content-card structure-health-card ${structureIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN STRUKTUR</span><h3>${structureIssues.length?`⚠ ${structureIssues.length} struktur sheet perlu dipulihkan`:'✓ Struktur sistem lengkap'}</h3><p>${structureIssues.length?'Sheet hilang, header hilang, atau susunan kolom yang rusak harus dipulihkan sebelum fungsi terkait digunakan.':'Semua sheet sistem kritis tersedia dan struktur/header yang diperiksa sesuai.'}</p></div><button id="refreshStructureHealth" class="mini-btn">Periksa Ulang</button></div><div class="protection-summary"><div><span>Status</span><strong>${structureIssues.length?'PERLU PEMULIHAN':'AMAN'}</strong></div><div><span>Sheet wajib</span><strong>${Number(structure.found||0)} / ${Number(structure.total||0)}</strong></div><div><span>Masalah struktur</span><strong>${structureIssues.length}</strong></div></div>${structureIssues.length?`<div class="structure-issue-list">${structureIssues.map(item=>{
       const source=item.recommendedSource||item.recommendedStructureSource||null;
       const critical=String(item.severity||'')==='CRITICAL';
@@ -347,6 +355,7 @@ export function createAdminModule(ctx) {
       <div class="content-card protection-card"><div class="card-head-row"><div><span class="eyebrow">KEAMANAN MASTER</span><h3>Proteksi Edit Manual</h3><p>Proteksi membatasi perubahan langsung pada sheet sistem. Backup dan pemulihan tetap menjadi perlindungan utama bila terjadi salah hapus.</p></div><button id="applyMasterProtection" class="secondary-btn">${String(protection.status||'')==='AMAN'?'Periksa / Terapkan Ulang':'Perbaiki Proteksi'}</button></div><div class="protection-summary"><div><span>Status</span><strong>${esc(protection.status || 'BELUM DIPERIKSA')}</strong></div><div><span>Sheet terlindungi</span><strong>${Number(protection.protected||0)} / ${Number(protection.total||0)}</strong></div><div><span>Perlu perhatian</span><strong>${Number((protection.unprotected||[]).length + (protection.missing||[]).length)}</strong></div></div>${(protection.unprotected||[]).length?`<div class="alert warning">Belum terlindungi: ${esc(protection.unprotected.join(', '))}</div>`:''}</div>
 
       ${fileStateBlock}
+      ${emergencyAccessBlock}
       ${structureCard}
       ${dataHealthCard}
       ${emergencyCard}
@@ -364,6 +373,7 @@ export function createAdminModule(ctx) {
         <details open><summary>Satu cell/field Master terhapus</summary><ol><li>Jangan melakukan perubahan lain pada cell tersebut.</li><li>Buka <b>Bandingkan Master dengan Backup</b>.</li><li>Pilih backup sebelum kesalahan.</li><li>Klik <b>Bandingkan</b> dan centang hanya cell yang ingin dikembalikan.</li><li>Masukkan PIN Admin. Sistem membuat backup pengaman sebelum pemulihan.</li><li>Ulangi <b>Bandingkan Master dengan Backup</b> untuk memastikan cell yang dipulihkan tidak lagi ditawarkan.</li></ol></details>
         <details><summary>Satu sheet sistem seperti KENDALA_KURIR terhapus</summary><ol><li>Jangan membuat sheet pengganti manual.</li><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Klik <b>Pulihkan Sheet Sistem</b> pada sheet yang hilang.</li><li>Masukkan PIN Admin.</li><li>Setelah selesai, periksa kembali <b>Kesehatan Struktur</b> dan <b>Proteksi Edit Manual</b>.</li></ol></details>
         <details><summary>Header/struktur sheet terhapus atau sheet kosong total</summary><ol><li>Lihat bagian <b>Kesehatan Struktur</b>.</li><li>Pastikan nama sheet masih ada tetapi header/struktur terdeteksi rusak.</li><li>Klik <b>Pulihkan Struktur Sheet</b>.</li><li>Masukkan PIN Admin.</li><li>Jika sheet kosong total, sistem mengembalikan header, format, dan isi dari <b>Backup Sehat Terakhir</b>. Jika data masih ada, sistem memulihkan struktur tanpa menimpa data yang masih tersisa.</li><li>Periksa kembali <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
+        <details><summary>Seluruh Akun & PIN terhapus sehingga PIN Admin tidak bisa dipakai</summary><ol><li>Jangan membuat akun baru secara manual dan jangan panik bila login biasa gagal.</li><li>Sistem otomatis masuk <b>Mode Pemulihan Akses</b> bila sheet Akun & PIN rusak, kosong, atau tidak memiliki Admin aktif.</li><li>Masuk menggunakan <b>PIN Admin terakhir yang sah</b>. Sistem memverifikasi hash darurat yang disimpan di luar Spreadsheet; PIN asli tidak disimpan sebagai teks.</li><li>Buka <b>Arsip → Pemulihan Master</b>, pilih <b>Akun & PIN</b>, lalu pulihkan dari <b>Backup Sehat Terakhir</b>.</li><li>Setelah Akun & PIN kembali sehat, autentikasi normal aktif kembali otomatis.</li></ol></details>
         <details><summary>Sheet ada, header masih utuh, tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Pastikan <b>Kesehatan Struktur</b> berstatus aman untuk sheet tersebut.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>Beberapa baris DATABASE / transaksi terhapus</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Sistem membandingkan <b>ID Sistem</b>, <b>ATTEMPT_ID</b>, dan <b>PARENT_ID</b> dengan <b>Backup Sehat Terakhir</b>.</li><li>Jika record hilang terdeteksi, klik <b>Pulihkan Transaksi Hilang</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem hanya menambahkan record yang hilang dan tidak me-rollback transaksi baru.</li><li>Pastikan hasil verifikasi integritas berstatus <b>AMAN</b>.</li></ol></details>
         <details><summary>DATABASE kosong total, header rusak, atau sheet DATABASE hilang</summary><ol><li>Hentikan operasional transaksi.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Gunakan sumber checkpoint/backup yang direkomendasikan sistem.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Sistem mengembalikan DATABASE dan komponen transaksi terkait sebagai satu bundle.</li><li>Operasional hanya dianggap aman setelah verifikasi header, ID, duplikasi, dan relasi transaksi berstatus <b>AMAN</b>.</li></ol></details>
@@ -421,10 +431,28 @@ export function createAdminModule(ctx) {
     }
   }
 
-  async function refreshAfterRecovery_() {
-    await refreshResilienceState_({silent:true,preserveScroll:true});
-    await new Promise(resolve=>setTimeout(resolve,450));
-    await refreshResilienceState_({silent:true,preserveScroll:true});
+  function applyPostState_(restore) {
+    const post = restore?.postState || null;
+    if (!post || !state.resilience) return false;
+    if (post.structure) state.resilience.structure = post.structure;
+    if (post.dataHealth) state.resilience.dataHealth = post.dataHealth;
+    if (post.maintenanceMode) state.resilience.maintenanceMode = post.maintenanceMode;
+    if (post.protection) state.resilience.protection = post.protection;
+    ['lastMasterRestore','lastSystemRestore','lastStructureRestore','lastCellRestore','lastContentRestore','lastTransactionRestore','emergencyAccess'].forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(post,key)) state.resilience[key] = post[key];
+    });
+    if (archiveMounted_()) drawArchive();
+    return true;
+  }
+
+  function scheduleRecoveryVerification_() {
+    setTimeout(() => refreshResilienceState_({silent:true,preserveScroll:true}).catch(() => {}), 900);
+  }
+
+  async function refreshAfterRecovery_(restore=null) {
+    const applied = applyPostState_(restore);
+    if (!applied) await refreshResilienceState_({silent:true,preserveScroll:true});
+    scheduleRecoveryVerification_();
   }
 
   async function restoreMissingProductionSheet_(sheetName,sourceId,triggerButton=null) {
@@ -432,9 +460,10 @@ export function createAdminModule(ctx) {
     if (!pin) return;
     setBusy(triggerButton,true,'Memulihkan…');
     try {
-      await api().adminRestoreMissingSheet(token(),sourceId,sheetName,pin);
+      const response=await api().adminRestoreMissingSheet(token(),sourceId,sheetName,pin);
+      const restore=response.data?.restore||{};
       ctx.showToast(`${systemSheetLabel(sheetName)} berhasil dipulihkan.`,'success',6000);
-      await refreshAfterRecovery_();
+      await refreshAfterRecovery_(restore);
     } catch (error) { ctx.showToast(error.message,'error',7000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -451,7 +480,7 @@ export function createAdminModule(ctx) {
         ? `${systemSheetLabel(sheetName)} berhasil dipulihkan lengkap termasuk ${Number(restore.restoredRows||0)} data.`
         : `Struktur ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menimpa data yang masih ada.`;
       ctx.showToast(message,'success',8000);
-      await refreshAfterRecovery_();
+      await refreshAfterRecovery_(restore);
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -465,7 +494,7 @@ export function createAdminModule(ctx) {
       const response = await api().adminRestoreSheetContent(token(),sourceId,sheetName,pin);
       const restore = response.data?.restore || {};
       ctx.showToast(`${Number(restore.restoredRows||0)} data ${systemSheetLabel(sheetName)} berhasil dipulihkan tanpa menghapus data baru.`,'success',8000);
-      await refreshAfterRecovery_();
+      await refreshAfterRecovery_(restore);
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -479,7 +508,7 @@ export function createAdminModule(ctx) {
       const restore=response.data?.restore||{};
       const consistency=restore.consistency||{};
       ctx.showToast(`${Number(restore.restoredRows||0)} record transaksi berhasil dipulihkan. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',9000);
-      await refreshAfterRecovery_();
+      await refreshAfterRecovery_(restore);
     }catch(error){ctx.showToast(error.message,'error',9000);}
     finally{setBusy(triggerButton,false);}
   }
@@ -490,9 +519,11 @@ export function createAdminModule(ctx) {
     setBusy(triggerButton,true,'Memulihkan…');
     try {
       const response = await api().adminEmergencyRestore(token(),sourceId,pin,true);
-      const consistency = response.data?.restore?.consistency || {};
-      ctx.showToast(`Pemulihan darurat selesai. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.`,consistency.ok?'success':'warning',8000);
-      await refreshAfterRecovery_();
+      const restore = response.data?.restore || {};
+      const consistency = restore.consistency || {};
+      const sourceNote = restore.sourceFallbackUsed ? ` Sumber awal tidak sehat; sistem otomatis memakai ${restore.sourceName || 'Backup Transaksi Sehat Terakhir'}.` : '';
+      ctx.showToast(`Pemulihan darurat selesai. Konsistensi: ${consistency.ok?'AMAN':'PERLU PEMERIKSAAN'}.${sourceNote}`,consistency.ok?'success':'warning',10000);
+      await refreshAfterRecovery_(restore);
     } catch (error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
@@ -528,7 +559,7 @@ export function createAdminModule(ctx) {
           } else {
             ctx.showToast(`${restored.length || cells.length} cell berhasil dipulihkan dan diverifikasi.`,'success',6500);
           }
-          await refreshResilienceState_({silent:true,preserveScroll:true});
+          await refreshAfterRecovery_(restore);
         }catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;setBusy(button,false);}
       });
     } catch (error) { ctx.showToast(error.message,'error',7000); }
@@ -546,10 +577,17 @@ export function createAdminModule(ctx) {
       const button = document.getElementById('backupSave');
       setBusy(button,true,'Membuat Backup…');
       try {
-        await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
+        const response=await api().adminBackupNow(token(),document.getElementById('backupNote')?.value || '');
+        const backup=response.data?.backup||null;
+        if(backup && state.resilience){
+          const recent=Array.isArray(state.resilience.recent)?state.resilience.recent.slice():[];
+          state.resilience.recent=[backup,...recent.filter(item=>String(item.id||'')!==String(backup.id||''))].slice(0,12);
+          state.resilience.lastManual={ok:true,at:backup.createdAt||new Date().toISOString(),id:backup.id,name:backup.name};
+        }
         ctx.closeModal();
+        if(archiveMounted_())drawArchive();
         ctx.showToast('Backup Master berhasil dibuat. Daftar backup diperbarui.','success');
-        await refreshResilienceState_({silent:true,preserveScroll:true});
+        setTimeout(()=>refreshResilienceState_({silent:true,preserveScroll:true}).catch(()=>{}),700);
       } catch (error) { document.getElementById('backupModalMsg').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; setBusy(button,false); }
     });
   }
@@ -599,7 +637,8 @@ export function createAdminModule(ctx) {
         const restore = response.data?.restore || {};
         ctx.closeModal();
         ctx.showToast(`Pemulihan Master selesai: ${(restore.sheets||[]).map(masterSheetLabel).join(', ')}.`,'success',6000);
-        await refreshResilienceState_({silent:true,preserveScroll:true});
+        await refreshAfterRecovery_(restore);
+        if ((restore.sheets||[]).includes('AKSES') && typeof ctx.refreshSession === 'function') await ctx.refreshSession();
       } catch (error) { msg.innerHTML = `<div class="alert error">${esc(error.message)}</div>`; setBusy(button,false); }
     });
   }

@@ -93,12 +93,12 @@ export class AppsScriptTransport {
     if (!navigator.onLine) return Promise.reject(apiError('Perangkat sedang offline. Periksa koneksi internet lalu coba kembali.', 'OFFLINE'));
     const resilienceLongMethods = new Set([
       'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
-      'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetContent',
+      'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetStructure','admin.restoreSheetContent',
       'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
     ]);
     const methodName=String(method||'');
     const requestTimeoutMs = methodName === 'admin.emergencyRestore'
-      ? Math.max(this.timeoutMs, 180000)
+      ? Math.max(this.timeoutMs, 240000)
       : methodName === 'admin.restoreMissingTransactions'
         ? Math.max(this.timeoutMs, 120000)
         : resilienceLongMethods.has(methodName) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
