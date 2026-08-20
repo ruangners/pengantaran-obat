@@ -1,5 +1,5 @@
 export function createAdminModule(ctx) {
-  const state = {loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''};
+  const state = {loaded:false,summary:{},archive:null,resilience:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''};
   let archiveFocusHandler = null;
   let archiveVisibilityHandler = null;
   let archiveRefreshBusy = false;
@@ -17,7 +17,7 @@ export function createAdminModule(ctx) {
   const statusOptions = ['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
 
   function resetForLogout() {
-    Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,master:{},audit:[],metadata:null,rows:[],search:''});
+    Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''});
     detachArchiveAutoHealth_();
   }
 
@@ -432,6 +432,12 @@ export function createAdminModule(ctx) {
   }
 
   function applyPostState_(restore) {
+    const snapshot = restore?.resilienceSnapshot || null;
+    if (snapshot) {
+      state.resilience = snapshot;
+      if (archiveMounted_()) drawArchive();
+      return true;
+    }
     const post = restore?.postState || null;
     if (!post || !state.resilience) return false;
     if (post.structure) state.resilience.structure = post.structure;
@@ -656,17 +662,34 @@ export function createAdminModule(ctx) {
   }
 
   async function renderMaster() {
-    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">MASTER</div><h1>Ringkasan Master Data</h1><p>Operasional Admin dilakukan dari dashboard. Perubahan pegawai, role, PIN, dan aktif/nonaktif dilakukan pada Master Spreadsheet.</p></div><div class="hero-actions"><button id="masterRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="masterBody"><div class="inline-loading">Memuat…</div></section>`;
+    page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">MASTER</div><h1>Master Data & Akun</h1><p>Kelola akun petugas dan konfigurasi inti dari Dashboard Admin. Spreadsheet tidak perlu menjadi tempat kerja harian.</p></div><div class="hero-actions"><button id="masterRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section" id="masterBody"><div class="inline-loading">Memuat…</div></section>`;
     const load = async() => {
-      try { const response = await api().adminRefreshMaster(token()); state.master = response.data?.master || {}; drawMaster(); }
-      catch (error) { document.getElementById('masterBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
+      try {
+        const response = await api().adminRefreshMaster(token());
+        state.master = response.data?.master || {};
+        state.accounts = response.data?.accounts || {accounts:[]};
+        drawMaster();
+      } catch (error) { document.getElementById('masterBody').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
     };
     document.getElementById('masterRefresh')?.addEventListener('click',async event=>{const button=event.currentTarget;setBusy(button,true,'Memuat…');try{await load();}finally{setBusy(button,false);}});
     await load();
   }
 
+  function accountRoleLabel_(role) {
+    return ({ADMIN:'Admin Data',FARMASI:'Farmasi',KURIR:'Kurir',MANAJEMEN:'Manajemen'})[String(role||'').toUpperCase()] || role || '-';
+  }
+
+  function accountByEmail_(email) {
+    const rows=Array.isArray(state.accounts?.accounts)?state.accounts.accounts:[];
+    return rows.find(item=>String(item.email||'').toLowerCase()===String(email||'').toLowerCase()) || null;
+  }
+
   function drawMaster() {
     const m = state.master || {};
+    const accountState = state.accounts || {accounts:[]};
+    const accounts = Array.isArray(accountState.accounts) ? accountState.accounts : [];
+    const admin = accounts.find(item=>item.isAdmin) || null;
+    const operational = accounts.filter(item=>!item.isAdmin);
     const items = [
       ['Wilayah',countArray(m.areas)],
       ['Alasan Gagal/Pending',countArray(m.failureReasons)],
@@ -675,7 +698,90 @@ export function createAdminModule(ctx) {
       ['Metode Verifikasi',countArray(m.manualVerificationMethods)],
       ['Hubungan Penerima',countArray(m.receiptRelationships)]
     ];
-    document.getElementById('masterBody').innerHTML = `<div class="grid grid-3">${items.map(([label,value]) => metric(label,value,'Item aktif')).join('')}</div><div class="system-alert info"><strong>Master Spreadsheet adalah sumber konfigurasi inti.</strong><span>Gunakan hanya saat menambah pegawai, mengubah role/PIN, aktif-nonaktif akun, atau perubahan master yang memang diperlukan.</span></div>`;
+    const adminWarning = accountState.singleAdminOk===false
+      ? `<div class="system-alert warning"><strong>Konfigurasi Admin perlu diperiksa.</strong><span>Produksi V1 menggunakan tepat satu Admin aktif. Saat ini terdeteksi ${Number(accountState.adminCount||0)} akun Admin dan ${Number(accountState.activeAdminCount||0)} Admin aktif.</span></div>` : '';
+    const adminCard = admin ? `<div class="account-admin-card"><div><span class="eyebrow">ADMIN TUNGGAL</span><h3>${esc(admin.name||'Administrator Sistem')}</h3><p>${esc(admin.email||'-')} • ADMIN • ${admin.active?'AKTIF':'NONAKTIF'}</p><small>PIN tersimpan: ${admin.pinConfigured?'Ya':'Tidak'} • Credential pemulihan darurat tersinkron otomatis saat PIN Admin diganti dari Dashboard.</small></div><div class="account-actions"><button class="mini-btn" data-account-edit="${esc(admin.email)}">Ubah Profil</button><button class="mini-btn warning-soft" data-account-pin="${esc(admin.email)}">Ganti PIN</button></div></div>` : `<div class="system-alert error"><strong>Akun Admin tidak ditemukan.</strong><span>Gunakan Arsip → Pemulihan Master untuk mengembalikan Akun & PIN.</span></div>`;
+    const operationalRows = operational.length ? operational.map(item=>`<tr><td data-label="Nama"><strong>${esc(item.name||'-')}</strong><small class="table-sub">${esc(item.email||'-')}</small></td><td data-label="Role">${esc(accountRoleLabel_(item.role))}</td><td data-label="Status"><span class="status-badge ${item.active?'delivered':'neutral'}">${item.active?'AKTIF':'NONAKTIF'}</span></td><td data-label="PIN">${item.pinConfigured?'Tersimpan':'Belum ada'}</td><td data-label="Aksi"><div class="row-actions"><button class="mini-btn" data-account-edit="${esc(item.email)}">Edit</button><button class="mini-btn" data-account-pin="${esc(item.email)}">Ganti PIN</button><button class="mini-btn ${item.active?'danger-soft':'primary-soft'}" data-account-active="${esc(item.email)}" data-next-active="${item.active?'0':'1'}">${item.active?'Nonaktifkan':'Aktifkan'}</button></div></td></tr>`).join('') : '';
+    document.getElementById('masterBody').innerHTML = `
+      ${adminWarning}
+      <div class="content-card account-management-card"><div class="card-head-row"><div><span class="eyebrow">AKUN & PIN</span><h3>Pengelolaan Akses Petugas</h3><p>Tambah petugas, ubah role, ganti PIN, dan aktif/nonaktifkan akun langsung dari Dashboard. Akun tidak dihapus agar jejak aktivitas tetap terjaga.</p></div><button id="addOperationalAccount" class="primary-btn">+ Tambah Akun</button></div>
+        ${adminCard}
+        <div class="account-table-head"><div><h3>Akun Operasional</h3><p>${operational.length} akun terdaftar</p></div></div>
+        ${operational.length?`<div class="table-scroll"><table class="data-table responsive-table"><thead><tr><th>Nama</th><th>Role</th><th>Status</th><th>PIN</th><th>Aksi</th></tr></thead><tbody>${operationalRows}</tbody></table></div>`:`<div class="empty-state"><p>Belum ada akun Farmasi, Kurir, atau Manajemen.</p></div>`}
+      </div>
+      <div class="grid grid-3">${items.map(([label,value]) => metric(label,value,'Item aktif')).join('')}</div>
+      <div class="system-alert info"><strong>Spreadsheet adalah database belakang layar.</strong><span>Perubahan akun normal dilakukan melalui Dashboard Admin. Spreadsheet hanya dibuka untuk pemeriksaan teknis atau pemulihan khusus.</span></div>`;
+    bindAccountActions_();
+  }
+
+  function bindAccountActions_() {
+    document.getElementById('addOperationalAccount')?.addEventListener('click',openAddAccount_);
+    document.querySelectorAll('[data-account-edit]').forEach(button=>button.addEventListener('click',()=>openEditAccount_(button.dataset.accountEdit)));
+    document.querySelectorAll('[data-account-pin]').forEach(button=>button.addEventListener('click',()=>openChangeAccountPin_(button.dataset.accountPin)));
+    document.querySelectorAll('[data-account-active]').forEach(button=>button.addEventListener('click',()=>toggleAccountActive_(button.dataset.accountActive,button.dataset.nextActive==='1',button)));
+  }
+
+  async function applyAccountsResponse_(response) {
+    const payload=response?.data?.accounts || null;
+    if(payload) state.accounts=payload;
+    else {
+      const refreshed=await api().adminRefreshMaster(token());
+      state.master=refreshed.data?.master||state.master;
+      state.accounts=refreshed.data?.accounts||state.accounts;
+    }
+    drawMaster();
+  }
+
+  function openAddAccount_() {
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">AKUN BARU</div><h3>Tambah Akun Operasional</h3><p>Produksi V1 hanya memiliki satu Admin. Akun baru dapat dibuat untuk Farmasi, Kurir, atau Manajemen.</p></div><button class="modal-x" data-modal-close>×</button></div>
+      <div class="grid grid-2"><div class="field"><label>Email / ID akun <b>*</b></label><input id="accountEmail" type="email" autocomplete="off" placeholder="contoh: kurir4@rsudntb.local"></div><div class="field"><label>Nama petugas <b>*</b></label><input id="accountName" autocomplete="off" placeholder="Nama lengkap"></div><div class="field"><label>Role <b>*</b></label><select id="accountRole"><option value="FARMASI">Farmasi</option><option value="KURIR">Kurir</option><option value="MANAJEMEN">Manajemen</option></select></div><div class="field"><label>PIN awal <b>*</b></label><input id="accountPin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="4–8 angka"></div></div>
+      <div class="field"><label>Catatan <span class="optional">opsional</span></label><input id="accountNote" placeholder="Contoh: Kurir wilayah A"></div><div class="field"><label>PIN Admin <b>*</b></label><input id="accountAdminPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Konfirmasi PIN Admin"></div>
+      <div class="system-alert info compact-alert"><strong>Akun dibuat aktif.</strong><span>PIN dapat diganti kapan saja dari Dashboard Admin.</span></div><div id="accountModalMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="accountCreateSave" class="primary-btn">Tambah Akun</button></div>`,{wide:true});
+    document.getElementById('accountCreateSave')?.addEventListener('click',async()=>{
+      const button=document.getElementById('accountCreateSave');
+      const payload={email:document.getElementById('accountEmail')?.value||'',name:document.getElementById('accountName')?.value||'',role:document.getElementById('accountRole')?.value||'',pin:document.getElementById('accountPin')?.value||'',note:document.getElementById('accountNote')?.value||''};
+      const adminPin=String(document.getElementById('accountAdminPin')?.value||'').trim();
+      if(!adminPin){document.getElementById('accountModalMsg').innerHTML='<div class="alert error">PIN Admin wajib diisi.</div>';return;}
+      setBusy(button,true,'Menambahkan…');
+      try{const response=await api().adminAccountCreate(token(),payload,adminPin);ctx.closeModal();await applyAccountsResponse_(response);ctx.showToast('Akun operasional berhasil ditambahkan.','success',6000);}catch(error){document.getElementById('accountModalMsg').innerHTML=`<div class="alert error">${esc(error.message)}</div>`;setBusy(button,false);}
+    });
+  }
+
+  function openEditAccount_(email) {
+    const item=accountByEmail_(email);if(!item)return ctx.showToast('Akun tidak ditemukan. Segarkan Master.','error');
+    const isAdmin=item.isAdmin===true;
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">${isAdmin?'ADMIN TUNGGAL':'EDIT AKUN'}</div><h3>${isAdmin?'Ubah Profil Admin':'Ubah Akun Petugas'}</h3><p>${isAdmin?'Role ADMIN dan status AKTIF dikunci pada Produksi V1.':'Perubahan disimpan ke Akun & PIN dan dicatat pada Audit.'}</p></div><button class="modal-x" data-modal-close>×</button></div>
+      <div class="grid grid-2"><div class="field"><label>Email / ID akun <b>*</b></label><input id="editAccountEmail" type="email" value="${esc(item.email||'')}" ${isAdmin?'disabled':''}></div><div class="field"><label>Nama petugas <b>*</b></label><input id="editAccountName" value="${esc(item.name||'')}"></div><div class="field"><label>Role</label>${isAdmin?`<input value="Admin Data" disabled>`:`<select id="editAccountRole"><option value="FARMASI" ${item.role==='FARMASI'?'selected':''}>Farmasi</option><option value="KURIR" ${item.role==='KURIR'?'selected':''}>Kurir</option><option value="MANAJEMEN" ${item.role==='MANAJEMEN'?'selected':''}>Manajemen</option></select>`}</div><div class="field"><label>Status</label><input value="${isAdmin?'AKTIF — dikunci':(item.active?'AKTIF':'NONAKTIF')}" disabled></div></div>
+      <div class="field"><label>Catatan <span class="optional">opsional</span></label><input id="editAccountNote" value="${esc(item.note||'')}"></div><div class="field"><label>PIN Admin <b>*</b></label><input id="editAccountAdminPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Konfirmasi PIN Admin"></div><div id="editAccountMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="editAccountSave" class="primary-btn">Simpan Perubahan</button></div>`,{wide:true});
+    document.getElementById('editAccountSave')?.addEventListener('click',async()=>{
+      const button=document.getElementById('editAccountSave');
+      const payload={email:document.getElementById('editAccountEmail')?.value||'',name:document.getElementById('editAccountName')?.value||'',role:isAdmin?'ADMIN':document.getElementById('editAccountRole')?.value||'',active:isAdmin?true:item.active,note:document.getElementById('editAccountNote')?.value||''};
+      const adminPin=String(document.getElementById('editAccountAdminPin')?.value||'').trim();if(!adminPin){document.getElementById('editAccountMsg').innerHTML='<div class="alert error">PIN Admin wajib diisi.</div>';return;}
+      setBusy(button,true,'Menyimpan…');
+      try{const response=await api().adminAccountUpdate(token(),item.email,payload,adminPin);ctx.closeModal();await applyAccountsResponse_(response);ctx.showToast(isAdmin?'Profil Admin berhasil diperbarui.':'Akun berhasil diperbarui.','success',6000);}catch(error){document.getElementById('editAccountMsg').innerHTML=`<div class="alert error">${esc(error.message)}</div>`;setBusy(button,false);}
+    });
+  }
+
+  function openChangeAccountPin_(email) {
+    const item=accountByEmail_(email);if(!item)return ctx.showToast('Akun tidak ditemukan. Segarkan Master.','error');
+    ctx.openModal(`<div class="modal-head"><div><div class="eyebrow">GANTI PIN</div><h3>${esc(item.name||item.email)}</h3><p>${item.isAdmin?'PIN Admin baru akan langsung disinkronkan dengan credential Pemulihan Akses Darurat.':'PIN lama akan diganti dan tidak ditampilkan kembali.'}</p></div><button class="modal-x" data-modal-close>×</button></div>
+      <div class="field"><label>PIN baru <b>*</b></label><input id="newAccountPin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="4–8 angka"></div><div class="field"><label>Ulangi PIN baru <b>*</b></label><input id="repeatAccountPin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="Ulangi PIN"></div><div class="field"><label>PIN Admin saat ini <b>*</b></label><input id="changePinAdminConfirm" type="password" inputmode="numeric" autocomplete="off" placeholder="Konfirmasi PIN Admin"></div><div id="changePinMsg"></div><div class="modal-actions"><button class="secondary-btn" data-modal-close>Batal</button><button id="changePinSave" class="warning-btn">Ganti PIN</button></div>`);
+    document.getElementById('changePinSave')?.addEventListener('click',async()=>{
+      const button=document.getElementById('changePinSave');const p1=String(document.getElementById('newAccountPin')?.value||'').trim(),p2=String(document.getElementById('repeatAccountPin')?.value||'').trim();const msg=document.getElementById('changePinMsg');
+      if(p1!==p2){msg.innerHTML='<div class="alert error">PIN baru dan konfirmasi PIN tidak sama.</div>';return;}
+      if(!/^\d{4,8}$/.test(p1)){msg.innerHTML='<div class="alert error">PIN harus terdiri dari 4–8 angka.</div>';return;}
+      const adminPin=String(document.getElementById('changePinAdminConfirm')?.value||'').trim();if(!adminPin){msg.innerHTML='<div class="alert error">PIN Admin saat ini wajib diisi.</div>';return;}
+      setBusy(button,true,'Mengganti PIN…');
+      try{const response=await api().adminAccountChangePin(token(),item.email,p1,adminPin);ctx.closeModal();await applyAccountsResponse_(response);ctx.showToast(item.isAdmin?'PIN Admin dan Pemulihan Darurat berhasil disinkronkan.':'PIN petugas berhasil diganti.','success',7000);if(item.isAdmin&&typeof ctx.refreshSession==='function')await ctx.refreshSession();}catch(error){msg.innerHTML=`<div class="alert error">${esc(error.message)}</div>`;setBusy(button,false);}
+    });
+  }
+
+  async function toggleAccountActive_(email,nextActive,triggerButton=null) {
+    const item=accountByEmail_(email);if(!item)return;
+    if(item.isAdmin){ctx.showToast('Akun Admin tunggal tidak dapat dinonaktifkan.','error');return;}
+    const pin=await requestAdminPin_({title:nextActive?'Aktifkan akun?':'Nonaktifkan akun?',message:`${item.name||item.email} akan ${nextActive?'dapat':'tidak dapat'} login ke aplikasi. Data dan riwayat akun tetap disimpan.`,confirmLabel:nextActive?'Ya, Aktifkan':'Ya, Nonaktifkan'});if(!pin)return;
+    setBusy(triggerButton,true,nextActive?'Mengaktifkan…':'Menonaktifkan…');
+    try{const response=await api().adminAccountSetActive(token(),item.email,nextActive,pin);await applyAccountsResponse_(response);ctx.showToast(nextActive?'Akun berhasil diaktifkan.':'Akun berhasil dinonaktifkan.','success',6000);}catch(error){ctx.showToast(error.message,'error',7000);}finally{setBusy(triggerButton,false);}
   }
 
   async function renderAudit() {

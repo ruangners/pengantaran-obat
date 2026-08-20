@@ -94,7 +94,8 @@ export class AppsScriptTransport {
     const resilienceLongMethods = new Set([
       'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
       'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetStructure','admin.restoreSheetContent',
-      'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule'
+      'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule',
+      'admin.accountCreate','admin.accountUpdate','admin.accountChangePin','admin.accountSetActive'
     ]);
     const methodName=String(method||'');
     const requestTimeoutMs = methodName === 'admin.emergencyRestore'
@@ -264,6 +265,11 @@ export class PengantaranApi {
   adminApplyProtections(token, adminPin = '') { return this._mutate('admin.applyProtections', String(token || ''), String(adminPin || '')); }
   adminEnsureBackupSchedule(token, adminPin = '') { return this._mutate('admin.ensureBackupSchedule', String(token || ''), String(adminPin || '')); }
   adminRefreshMaster(token) { return this._read('admin.refreshMaster', String(token || '')); }
+  adminAccounts(token) { return this._read('admin.accounts', String(token || '')); }
+  adminAccountCreate(token, payload, adminPin = '') { return this._mutate('admin.accountCreate', String(token || ''), payload || {}, String(adminPin || '')); }
+  adminAccountUpdate(token, currentEmail, payload, adminPin = '') { return this._mutate('admin.accountUpdate', String(token || ''), String(currentEmail || ''), payload || {}, String(adminPin || '')); }
+  adminAccountChangePin(token, email, newPin, adminPin = '') { return this._mutate('admin.accountChangePin', String(token || ''), String(email || ''), String(newPin || ''), String(adminPin || '')); }
+  adminAccountSetActive(token, email, active, adminPin = '') { return this._mutate('admin.accountSetActive', String(token || ''), String(email || ''), active === true, String(adminPin || '')); }
   adminAuditRows(token, limit = 100) { return this._read('admin.audit', String(token || ''), Number(limit || 100)); }
   deliveryHistory(token, id) { return this._read('admin.deliveryHistory', String(token || ''), String(id || '')); }
 
