@@ -329,9 +329,12 @@ export function createCourierModule(ctx) {
         return;
       }
       ctx.closeModal();
-      await refreshRows({includeHistory:true, silent:true});
+      // Respons mutasi sudah menjadi sumber kebenaran. Perbarui kartu segera agar Kurir tidak menunggu read ulang.
+      state.mine = state.mine.filter(item => String(item.id) !== String(id));
+      renderTasksData();
       ctx.showToast(data.verificationPending ? 'Penyerahan disimpan. Menunggu verifikasi manual Farmasi.' : 'Pengantaran selesai dan terverifikasi.', data.verificationPending ? 'warning' : 'success');
       if (data.waAction) openWaAction(data.waAction, data.verificationPending ? 'Beritahu pasien tentang verifikasi lanjutan' : 'Kirim konfirmasi pengantaran');
+      setTimeout(() => refreshRows({includeHistory:true, silent:true}).catch(() => {}), 120);
     } catch (err) {
       if (msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`;
     } finally { setBusy(button,false); }

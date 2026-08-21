@@ -95,14 +95,20 @@ export class AppsScriptTransport {
       'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
       'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetStructure','admin.restoreSheetContent',
       'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule',
-      'admin.accountCreate','admin.accountUpdate','admin.accountChangePin','admin.accountSetActive'
+      'admin.accountCreate','admin.accountUpdate','admin.accountChangePin','admin.accountSetActive','admin.dataFidelityHealth','admin.repairDataFidelity'
     ]);
     const methodName=String(method||'');
     const requestTimeoutMs = methodName === 'admin.emergencyRestore'
       ? Math.max(this.timeoutMs, 240000)
+      : methodName === 'admin.repairDataFidelity'
+        ? Math.max(this.timeoutMs, 180000)
+        : methodName === 'admin.dataFidelityHealth'
+          ? Math.max(this.timeoutMs, 90000)
       : methodName === 'admin.restoreMissingTransactions'
         ? Math.max(this.timeoutMs, 120000)
-        : resilienceLongMethods.has(methodName) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
+        : methodName === 'auth.login'
+          ? Math.max(this.timeoutMs, 45000)
+          : resilienceLongMethods.has(methodName) ? Math.max(this.timeoutMs, 90000) : this.timeoutMs;
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(this.endpoint)) {
       return Promise.reject(apiError('Alamat layanan belum dikonfigurasi dengan benar.', 'INVALID_BACKEND_URL'));
     }
@@ -137,7 +143,10 @@ export class AppsScriptTransport {
         this.pending.delete(id);
         cleanup();
         this.onRequestState({ active:false, method });
-        reject(apiError(`Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`, 'REQUEST_TIMEOUT'));
+        const timeoutMessage = methodName === 'auth.login'
+          ? `Proses masuk membutuhkan waktu lebih lama dari biasanya dan server belum memberi jawaban setelah ${requestTimeoutMs / 1000} detik. Silakan coba kembali.`
+          : `Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`;
+        reject(apiError(timeoutMessage, 'REQUEST_TIMEOUT'));
       }, requestTimeoutMs);
 
       this.pending.set(id, { resolve, reject, timer, cleanup, method });
@@ -211,7 +220,7 @@ export class PengantaranApi {
   }
 
   ping() { return this._read('system.ping'); }
-  login(pin, clientInfo) { return this._mutate('auth.login', String(pin || ''), clientInfo || {}); }
+  login(pin, clientInfo) { return this.transport.call('auth.login', String(pin || ''), clientInfo || {}); }
   session(token) { return this._read('auth.session', String(token || '')); }
   logout(token) { return this._mutate('auth.logout', String(token || '')); }
 
@@ -234,6 +243,7 @@ export class PengantaranApi {
   manualReceiptWa(token, id) { return this._read('pharmacy.receiptWhatsApp', String(token || ''), String(id || '')); }
   manualVerifyReceipt(token, id, method, note) { return this._mutate('pharmacy.verifyReceipt', String(token || ''), String(id || ''), String(method || ''), String(note || '')); }
   activeIncidents(token) { return this._read('pharmacy.activeIncidents', String(token || '')); }
+  farmasiActiveIncidents(token) { return this.activeIncidents(token); }
 
   courierBootstrap(token) { return this._read('courier.bootstrap', String(token || '')); }
   courierRows(token) { return this._read('courier.queue', String(token || '')); }
@@ -251,6 +261,8 @@ export class PengantaranApi {
   adminUpdateStatus(token, id, status, note = '', adminPin = '') { return this._mutate('admin.correctStatus', String(token || ''), String(id || ''), String(status || ''), String(note || ''), String(adminPin || '')); }
   adminArchiveHealth(token) { return this._read('admin.archiveHealth', String(token || '')); }
   adminResilienceHealth(token) { return this._read('admin.resilienceHealth', String(token || '')); }
+  adminDataFidelityHealth(token) { return this._read('admin.dataFidelityHealth', String(token || '')); }
+  adminRepairDataFidelity(token, adminPin = '') { return this._mutate('admin.repairDataFidelity', String(token || ''), String(adminPin || '')); }
   adminBackupNow(token, note = '') { return this._mutate('admin.backupNow', String(token || ''), String(note || '')); }
   adminPrepareRecovery(token, backupId, adminPin = '') { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || ''), String(adminPin || '')); }
   adminRestoreMaster(token, backupId, sheets = [], adminPin = '') { return this._mutate('admin.restoreMaster', String(token || ''), String(backupId || ''), Array.isArray(sheets) ? sheets : [], String(adminPin || '')); }

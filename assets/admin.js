@@ -1,5 +1,5 @@
 export function createAdminModule(ctx) {
-  const state = {loaded:false,summary:{},archive:null,resilience:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''};
+  const state = {loaded:false,summary:{},archive:null,resilience:null,fidelity:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''};
   let archiveFocusHandler = null;
   let archiveVisibilityHandler = null;
   let archiveRefreshBusy = false;
@@ -17,7 +17,7 @@ export function createAdminModule(ctx) {
   const statusOptions = ['MENUNGGU DIPROSES','SIAP DIANTAR','DALAM PERJALANAN','TERKIRIM','GAGAL ANTAR'];
 
   function resetForLogout() {
-    Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''});
+    Object.assign(state,{loaded:false,summary:{},archive:null,resilience:null,fidelity:null,master:{},accounts:{accounts:[]},audit:[],metadata:null,rows:[],search:''});
     detachArchiveAutoHealth_();
   }
 
@@ -327,6 +327,13 @@ export function createAdminModule(ctx) {
       return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>Data sekarang: ${Number(item.currentRows||0)} • Backup Sehat Terakhir: ${Number(item.backupRows||0)}${missingNote}${source?` • ${esc(source.name)}`:''}</span><small>${esc(item.message||'Data perlu diperiksa.')}</small></div>${action}</div>`;
     }).join('')}</div>`:''}</div>`;
 
+    const fidelity = state.fidelity || null;
+    const fidelityRows = Array.isArray(fidelity?.rows) ? fidelity.rows : [];
+    const fidelityIssues = Array.isArray(fidelity?.issues) ? fidelity.issues : [];
+    const fidelityChecked = Boolean(fidelity);
+    const lastFidelityRepair = fidelity?.lastRepair || r.lastFidelityRepair || null;
+    const fidelityCard = `<div class="content-card fidelity-health-card ${fidelityChecked&&fidelityIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">INTEGRITAS FORMAT DATA</span><h3>${!fidelityChecked?'Periksa tipe, format, dan validasi seluruh data sistem':fidelityIssues.length?`⚠ ${fidelityIssues.length} sheet perlu diperbaiki`:'✓ Format data kritis terdeteksi sehat'}</h3><p>${!fidelityChecked?'Pemeriksaan ini memastikan hasil pemulihan tidak sekadar mengembalikan nilai, tetapi juga mempertahankan tanggal/waktu, PIN sebagai teks, dan validasi field penting.':fidelityIssues.length?'Ada data yang nilainya masih tersedia tetapi format/tipenya tidak lagi sesuai dengan backup sehat.':'Tanggal/waktu, PIN, dan format kritis yang diperiksa sesuai dengan sumber backup sehat.'}</p></div><button id="checkDataFidelity" class="secondary-btn">${fidelityChecked?'Periksa Lagi':'Periksa Format Data'}</button></div>${fidelityChecked?`<div class="protection-summary"><div><span>Status</span><strong>${esc(fidelity.status||'-')}</strong></div><div><span>Sheet diperiksa</span><strong>${fidelityRows.length}</strong></div><div><span>Perlu perbaikan</span><strong>${fidelityIssues.length}</strong></div></div>${fidelityIssues.length?`<div class="structure-issue-list">${fidelityIssues.map(item=>`<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • tanggal/waktu: ${Number(item.dateIssues||0)} • PIN: ${Number(item.pinIssues||0)} • format: ${Number(item.formatIssues||0)} • validasi: ${Number(item.validationIssues||0)}${item.source?.name?` • sumber: ${esc(item.source.name)}`:''}</span></div></div>`).join('')}</div><div class="fidelity-actions"><button id="repairDataFidelity" class="warning-btn">Perbaiki Format Data</button></div>`:`<div class="system-alert success compact-alert"><strong>Tidak ditemukan kerusakan format kritis.</strong><span>Recovery berikutnya tetap akan diverifikasi agar tipe/format data tidak berubah diam-diam.</span></div>`}${lastFidelityRepair?`<div class="fidelity-last">Perbaikan terakhir: <strong>${fmtDateTime(lastFidelityRepair.at)}</strong> • ${lastFidelityRepair.ok===false?'masih perlu pemeriksaan':'selesai'}</div>`:''}`:`<div class="system-alert info compact-alert"><strong>Pemeriksaan manual saat diperlukan</strong><span>Jalankan setelah proses pemulihan besar atau bila tanggal/waktu di Spreadsheet terlihat berubah menjadi angka serial.</span></div>`}</div>`;
+
     const criticalStructureIssues = structureIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const criticalDataIssues = dataIssues.filter(item=>String(item.severity||'')==='CRITICAL');
     const emergencyNeeded = criticalStructureIssues.length || criticalDataIssues.length;
@@ -358,6 +365,7 @@ export function createAdminModule(ctx) {
       ${emergencyAccessBlock}
       ${structureCard}
       ${dataHealthCard}
+      ${fidelityCard}
       ${emergencyCard}
       ${recoverySummary}
       ${restoreSummary}
@@ -377,6 +385,7 @@ export function createAdminModule(ctx) {
         <details><summary>Sheet ada, header masih utuh, tetapi isi datanya hilang/kosong</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Pastikan <b>Kesehatan Struktur</b> berstatus aman untuk sheet tersebut.</li><li>Periksa jumlah data sekarang dan <b>Backup Sehat Terakhir</b>.</li><li>Klik <b>Pulihkan Isi</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem menggabungkan data lama berdasarkan ID tanpa menghapus data baru.</li><li>Periksa kembali <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>Beberapa baris DATABASE / transaksi terhapus</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Sistem membandingkan <b>ID Sistem</b>, <b>ATTEMPT_ID</b>, dan <b>PARENT_ID</b> dengan <b>Backup Sehat Terakhir</b>.</li><li>Jika record hilang terdeteksi, klik <b>Pulihkan Transaksi Hilang</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem hanya menambahkan record yang hilang dan tidak me-rollback transaksi baru.</li><li>Pastikan hasil verifikasi integritas berstatus <b>AMAN</b>.</li></ol></details>
         <details><summary>DATABASE kosong total, header rusak, atau sheet DATABASE hilang</summary><ol><li>Hentikan operasional transaksi.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Gunakan sumber checkpoint/backup yang direkomendasikan sistem.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Sistem mengembalikan DATABASE dan komponen transaksi terkait sebagai satu bundle.</li><li>Operasional hanya dianggap aman setelah verifikasi header, ID, duplikasi, dan relasi transaksi berstatus <b>AMAN</b>.</li></ol></details>
+        <details><summary>Data masih ada tetapi tanggal/waktu berubah menjadi angka</summary><ol><li>Jangan mengubah angka serial tersebut secara manual.</li><li>Buka bagian <b>Integritas Format Data</b>.</li><li>Klik <b>Periksa Format Data</b>.</li><li>Jika ada temuan, klik <b>Perbaiki Format Data</b> dan masukkan PIN Admin.</li><li>Sistem membuat backup pengaman, memeriksa seluruh sheet sistem, lalu mengembalikan format tanggal/waktu, PIN teks, serta validasi penting dari backup sehat.</li><li>Periksa kembali Dashboard Manajemen dan <b>Integritas Format Data</b>.</li></ol></details>
         <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka bagian <b>Kesehatan Struktur</b> dan pastikan status file terdeteksi.</li><li>Jika tombol <b>Pulihkan File Asli</b> tersedia, gunakan tombol tersebut dan masukkan PIN Admin.</li><li>Jika file belum dapat diakses dari Dashboard, buka Google Drive → Sampah dan pulihkan file asli.</li><li>Kembali ke Dashboard lalu periksa <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>File Master hilang permanen</summary><ol><li>Gunakan backup sehat untuk membuat salinan pemulihan.</li><li>Periksa seluruh sheet dan konsistensi data.</li><li>Siapkan file pengganti dari backup sehat.</li><li>Relink backend hanya dilakukan pengelola sistem/IT. Jangan mengubah koneksi produksi tanpa pemeriksaan.</li></ol></details>
       </div><div class="system-alert info"><strong>Prinsip aman</strong><span>Pulihkan sekecil mungkin: cell untuk salah hapus cell, satu sheet untuk sheet sistem, dan bundle transaksi hanya untuk keadaan darurat.</span></div></div>`;
@@ -388,6 +397,8 @@ export function createAdminModule(ctx) {
     document.getElementById('applyMasterProtection')?.addEventListener('click',event=>applyMasterProtections_(event.currentTarget));
     document.getElementById('refreshStructureHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('refreshDataHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
+    document.getElementById('checkDataFidelity')?.addEventListener('click',event=>checkDataFidelity_(event.currentTarget));
+    document.getElementById('repairDataFidelity')?.addEventListener('click',event=>repairDataFidelity_(event.currentTarget));
     document.getElementById('restoreProductionTrash')?.addEventListener('click',restoreProductionFromTrash_);
     document.getElementById('compareMasterCells')?.addEventListener('click',async event => { const button=event.currentTarget; setBusy(button,true,'Membandingkan…'); try { await openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value); } finally { setBusy(button,false); } });
     root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
@@ -399,6 +410,36 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-restore-transactions]').forEach(button=>button.addEventListener('click',()=>restoreMissingTransactionsProduction_(button.dataset.restoreTransactions,button)));
     root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore,button)));
+  }
+
+  async function checkDataFidelity_(triggerButton=null) {
+    setBusy(triggerButton,true,'Memeriksa…');
+    const x=window.scrollX,y=window.scrollY;
+    try {
+      const response=await api().adminDataFidelityHealth(token());
+      state.fidelity=response.data?.health || null;
+      if (archiveMounted_()) drawArchive();
+      restoreScroll_(x,y);
+      const count=Array.isArray(state.fidelity?.issues)?state.fidelity.issues.length:0;
+      ctx.showToast(count?`${count} sheet memerlukan perbaikan integritas format.`:'Integritas format data terdeteksi sehat.',count?'warning':'success',7000);
+    } catch(error) { ctx.showToast(error.message,'error',8000); }
+    finally { setBusy(triggerButton,false); }
+  }
+
+  async function repairDataFidelity_(triggerButton=null) {
+    const pin=await requestAdminPin_({title:'Perbaiki integritas format data?',message:'Sistem akan membuat backup pengaman lalu memeriksa seluruh sheet sistem. Nilai data tidak diubah kecuali normalisasi tipe yang diperlukan agar tanggal/waktu dan format kritis kembali terbaca dengan benar.',confirmLabel:'Ya, Perbaiki Format'});
+    if(!pin)return;
+    setBusy(triggerButton,true,'Memperbaiki…');
+    const x=window.scrollX,y=window.scrollY;
+    try {
+      const response=await api().adminRepairDataFidelity(token(),pin);
+      state.fidelity=response.data?.repair?.health || null;
+      await refreshResilienceState_({silent:true,preserveScroll:true});
+      if(state.fidelity && archiveMounted_()) { drawArchive(); restoreScroll_(x,y); }
+      const ok=response.data?.repair?.ok===true;
+      ctx.showToast(ok?'Integritas format data berhasil diperbaiki dan diverifikasi.':'Perbaikan selesai tetapi masih ada format yang perlu diperiksa.',ok?'success':'warning',9000);
+    } catch(error) { ctx.showToast(error.message,'error',9000); }
+    finally { setBusy(triggerButton,false); }
   }
 
   async function refreshResilienceState_({silent=false,preserveScroll=true}={}) {

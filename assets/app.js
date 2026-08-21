@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc16';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc16';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc16';
-import { createCourierModule } from './courier.js?v=1.0.0-rc16';
-import { createAdminModule } from './admin.js?v=1.0.0-rc16';
-import { createManagementModule } from './management.js?v=1.0.0-rc16';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc17';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc17';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc17';
+import { createCourierModule } from './courier.js?v=1.0.0-rc17';
+import { createAdminModule } from './admin.js?v=1.0.0-rc17';
+import { createManagementModule } from './management.js?v=1.0.0-rc17';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -457,6 +457,7 @@ const farmasi = createFarmasiModule({
   getApi:() => state.api,
   getToken:() => state.session?.token || '',
   getUser:() => state.session?.user || null,
+  getView:() => state.view,
   navigate:openView,
   openModal,
   closeModal,
@@ -527,7 +528,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc16',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc17',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {
@@ -572,7 +573,13 @@ async function boot() {
     if (getEndpoint()) await connectBackend(getEndpoint());
     if (state.session) await recheckSession(true);
   });
-  document.addEventListener('visibilitychange',() => { if (document.visibilityState === 'visible' && state.session) recheckSession(false); });
+  document.addEventListener('visibilitychange',() => {
+    if (document.visibilityState !== 'visible' || !state.session) return;
+    recheckSession(false);
+    if (String(state.session?.user?.role || '').toUpperCase() === 'FARMASI' && typeof farmasi.refreshVisibleData === 'function') {
+      farmasi.refreshVisibleData({silent:true}).catch(() => {});
+    }
+  });
 
   updateConnectivity();
   const endpoint = getEndpoint();

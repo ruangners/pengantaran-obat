@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc16';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc17';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -13,7 +13,9 @@ export function createFarmasiModule(ctx) {
     search: '',
     followUpFilter: 'all',
     followUpExpanded: {},
-    followUpWaActions: {}
+    followUpWaActions: {},
+    timer: null,
+    autoRefreshBusy: false
   };
 
   const esc = ctx.escapeHtml;
@@ -75,6 +77,7 @@ export function createFarmasiModule(ctx) {
       state.activeIncidents = res.data?.activeIncidents || [];
       state.loaded = true;
       syncFarmasiBadges();
+      startAutoRefresh();
       return state;
     })();
     try { return await state.loading; }
@@ -100,6 +103,45 @@ export function createFarmasiModule(ctx) {
     state.failedFollowUps = res.data?.rows || [];
     syncFarmasiBadges();
     return state.failedFollowUps;
+  }
+
+  async function loadActiveIncidents() {
+    const res = await api().activeIncidents(token());
+    state.activeIncidents = res.data?.rows || [];
+    return state.activeIncidents;
+  }
+
+  function startAutoRefresh() {
+    if (state.timer) return;
+    state.timer = setInterval(() => refreshVisibleData({silent:true}).catch(() => {}), 30000);
+  }
+
+  async function refreshVisibleData({silent=true}={}) {
+    if (!token() || state.autoRefreshBusy || document.hidden) return false;
+    const view = typeof ctx.getView === 'function' ? ctx.getView() : '';
+    if (!['home','registration','today','verification','followup'].includes(view)) return false;
+    state.autoRefreshBusy = true;
+    try {
+      if (view === 'home') {
+        await Promise.all([loadRows(''),loadPending(),loadFailedFollowUps(),loadActiveIncidents()]);
+        renderHomeData();
+      } else if (view === 'registration') {
+        await loadActiveIncidents();
+        const banner=document.getElementById('farmasiRegistrationIncident');
+        if (banner) banner.innerHTML=farmasiIncidentBanner();
+      } else if (view === 'today') {
+        await loadRows(state.search);
+        renderTodayRows();
+      } else if (view === 'verification') {
+        await loadPending();
+        renderVerificationRows();
+      } else if (view === 'followup') {
+        await loadFailedFollowUps();
+        renderFollowUpData();
+      }
+      if (!silent) ctx.showToast('Data Farmasi diperbarui.','success');
+      return true;
+    } finally { state.autoRefreshBusy = false; }
   }
 
   async function refreshMaster() {
@@ -753,7 +795,7 @@ export function createFarmasiModule(ctx) {
   }
 
   async function createRetryInline(ev,id,prefix){
-    ev.preventDefault();if(!validateForm(prefix))return;const item=state.failedFollowUps.find(x=>followUpId(x)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan halaman.','error');const a=item.attempt||{},r=item.record||{};const schedule=normalizeDateKey(a.plannedDate);if(!schedule||!isDateDue(schedule))return ctx.showToast('Tanggal pengantaran ulang belum tiba.','warning');const btn=ev.currentTarget.querySelector('button[type="submit"]');const w=reserveWhatsAppWindow();buttonBusy(btn,true,'Membuat…');try{const payload=formPayload(prefix);payload.scheduleDate=schedule;const res=await api().rescheduleDelivery(token(),id,payload);delete state.followUpExpanded[id];await Promise.all([loadFailedFollowUps(),loadRows('')]);renderFollowUpData();ctx.showToast(res.message||'Pengantaran ulang dibuat.','success');const wa=res.data?.waAction||null;if(wa?.url){if(w)w.location.href=wa.url;else ctx.showToast('Pengantaran ulang dibuat, tetapi browser memblokir WhatsApp. Kode dapat dikirim ulang dari menu Hari Ini.','warning',8000);}else if(w)w.close();}catch(e){if(w)w.close();ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
+    ev.preventDefault();if(!validateForm(prefix))return;const item=state.failedFollowUps.find(x=>followUpId(x)===String(id));if(!item)return ctx.showToast('Data tidak ditemukan. Segarkan halaman.','error');const a=item.attempt||{},r=item.record||{};const schedule=normalizeDateKey(a.plannedDate);if(!schedule||!isDateDue(schedule))return ctx.showToast('Tanggal pengantaran ulang belum tiba.','warning');const btn=ev.currentTarget.querySelector('button[type="submit"]');const w=reserveWhatsAppWindow();buttonBusy(btn,true,'Membuat…');try{const payload=formPayload(prefix);payload.scheduleDate=schedule;const res=await api().rescheduleDelivery(token(),id,payload);delete state.followUpExpanded[id];ctx.showToast(res.message||'Pengantaran ulang dibuat.','success');const wa=res.data?.waAction||null;if(wa?.url){if(w)w.location.href=wa.url;else ctx.showToast('Pengantaran ulang dibuat, tetapi browser memblokir WhatsApp. Kode dapat dikirim ulang dari menu Hari Ini.','warning',8000);}else if(w)w.close();setTimeout(()=>Promise.all([loadFailedFollowUps(),loadRows('')]).then(()=>renderFollowUpData()).catch(()=>{}),120);}catch(e){if(w)w.close();ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
   }
 
   async function saveSelfPickupInline(id,button){
@@ -769,9 +811,12 @@ export function createFarmasiModule(ctx) {
   }
 
   function resetForLogout() {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    state.autoRefreshBusy = false;
     state.master = {areas:[],manualVerificationMethods:[]}; state.rows = []; state.pending = []; state.failedFollowUps = []; state.activeIncidents = []; state.lastCreated = null; state.loaded = false; state.loading = null; state.search = ''; state.followUpFilter='all'; state.followUpExpanded={}; state.followUpWaActions={};
     try { sessionStorage.removeItem(APP_CONFIG.farmasiDraftKey); } catch (_) {}
   }
 
-  return { renderHome, renderRegistration, renderToday, renderVerification, renderFollowUp, renderLabels, resetForLogout };
+  return { renderHome, renderRegistration, renderToday, renderVerification, renderFollowUp, renderLabels, refreshVisibleData, resetForLogout };
 }
