@@ -421,13 +421,14 @@ export function createAdminModule(ctx) {
       if (archiveMounted_()) drawArchive();
       restoreScroll_(x,y);
       const count=Array.isArray(state.fidelity?.issues)?state.fidelity.issues.length:0;
-      ctx.showToast(count?`${count} sheet memerlukan perbaikan integritas format.`:'Integritas format data terdeteksi sehat.',count?'warning':'success',7000);
+      const seconds=Math.max(0,Number(state.fidelity?.durationMs||0)/1000);
+      ctx.showToast(count?`${count} sheet memerlukan perbaikan integritas format. Pemeriksaan ${seconds.toFixed(1)} detik.`:`Integritas format data terdeteksi sehat. Pemeriksaan ${seconds.toFixed(1)} detik.`,count?'warning':'success',7000);
     } catch(error) { ctx.showToast(error.message,'error',8000); }
     finally { setBusy(triggerButton,false); }
   }
 
   async function repairDataFidelity_(triggerButton=null) {
-    const pin=await requestAdminPin_({title:'Perbaiki integritas format data?',message:'Sistem akan membuat backup pengaman lalu memeriksa seluruh sheet sistem. Nilai data tidak diubah kecuali normalisasi tipe yang diperlukan agar tanggal/waktu dan format kritis kembali terbaca dengan benar.',confirmLabel:'Ya, Perbaiki Format'});
+    const pin=await requestAdminPin_({title:'Perbaiki integritas format data?',message:'Sistem akan membuat backup pengaman lalu memperbaiki hanya sheet yang terdeteksi bermasalah. Nilai data tidak diubah kecuali normalisasi tipe yang diperlukan agar tanggal/waktu dan format kritis kembali terbaca dengan benar.',confirmLabel:'Ya, Perbaiki Format'});
     if(!pin)return;
     setBusy(triggerButton,true,'Memperbaiki…');
     const x=window.scrollX,y=window.scrollY;

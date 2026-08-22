@@ -103,7 +103,7 @@ export class AppsScriptTransport {
       : methodName === 'admin.repairDataFidelity'
         ? Math.max(this.timeoutMs, 180000)
         : methodName === 'admin.dataFidelityHealth'
-          ? Math.max(this.timeoutMs, 90000)
+          ? Math.max(this.timeoutMs, 60000)
       : methodName === 'admin.restoreMissingTransactions'
         ? Math.max(this.timeoutMs, 120000)
         : methodName === 'auth.login'
@@ -145,7 +145,9 @@ export class AppsScriptTransport {
         this.onRequestState({ active:false, method });
         const timeoutMessage = methodName === 'auth.login'
           ? `Proses masuk membutuhkan waktu lebih lama dari biasanya dan server belum memberi jawaban setelah ${requestTimeoutMs / 1000} detik. Silakan coba kembali.`
-          : `Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`;
+          : methodName === 'admin.dataFidelityHealth'
+            ? `Pemeriksaan format membutuhkan waktu lebih lama dari biasanya dan belum selesai setelah ${requestTimeoutMs / 1000} detik. Tidak ada perubahan data yang dilakukan.`
+            : `Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`;
         reject(apiError(timeoutMessage, 'REQUEST_TIMEOUT'));
       }, requestTimeoutMs);
 
