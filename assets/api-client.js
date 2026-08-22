@@ -147,7 +147,7 @@ export class AppsScriptTransport {
           ? `Proses masuk membutuhkan waktu lebih lama dari biasanya dan server belum memberi jawaban setelah ${requestTimeoutMs / 1000} detik. Silakan coba kembali.`
           : methodName === 'admin.dataFidelityHealth'
             ? `Pemeriksaan format membutuhkan waktu lebih lama dari biasanya dan belum selesai setelah ${requestTimeoutMs / 1000} detik. Tidak ada perubahan data yang dilakukan.`
-            : `Server belum merespons setelah ${requestTimeoutMs / 1000} detik. Data belum dianggap tersimpan. Jangan menekan tombol berulang.`;
+            : `Respons server belum diterima setelah ${requestTimeoutMs / 1000} detik. Loading sudah dihentikan pada layar ini. Silakan coba kembali bila diperlukan.`;
         reject(apiError(timeoutMessage, 'REQUEST_TIMEOUT'));
       }, requestTimeoutMs);
 
