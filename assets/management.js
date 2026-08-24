@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc24';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc25';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -235,6 +235,29 @@ export function createManagementModule(ctx) {
     return `<div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Pengantaran Ulang</h3><p>Aktivitas pengantaran tetap tercatat meskipun satu pasien memerlukan pengantaran ulang.</p></div></div><div class="report-summary-grid compact-summary"><div><span>Total Pengantaran</span><b>${n(a.total)}</b></div><div><span>Berhasil Diantar</span><b>${n(a.delivered)}</b></div><div><span>Gagal Diantar</span><b>${n(a.failed)}</b></div><div><span>Kasus Pengantaran Ulang</span><b>${n(a.retriedCases)}</b></div><div><span>Pengantaran Ulang Berhasil</span><b>${n(a.retryDelivered)}</b></div><div><span>Ambil Mandiri</span><b>${n(a.selfPickup)}</b></div></div></div>`;
   }
 
+  function executiveHighlights(k = {}, v = {}, inc = {}) {
+    const items = [
+      {tone:'success', label:'Terkirim', value:n(k.delivered || 0)},
+      {tone:'danger', label:'Gagal antar', value:n(k.failed || 0)},
+      {tone:'teal', label:'Penerimaan terverifikasi', value:pct(v.rate)},
+      {tone:Number(inc.active||0) > 0 ? 'warning' : 'neutral', label:'Kendala aktif', value:n(inc.active || 0)}
+    ];
+    return `<div class="executive-highlight-strip" aria-label="Sorotan periode">${items.map(item => `<div class="${item.tone}"><span>${esc(item.label)}</span><strong>${esc(String(item.value))}</strong></div>`).join('')}</div>`;
+  }
+
+  function pharmacyMobileCards(rows = []) {
+    if (!rows.length) return '';
+    return `<div class="mgmt-mobile-staff-list pharmacy-mobile-list">${rows.map(x => `<article class="mgmt-mobile-staff-card"><div class="mgmt-mobile-staff-head"><div><span>PETUGAS FARMASI</span><h4>${esc(x.name)}</h4></div><strong>${n(x.registrations)}<small>pendaftaran</small></strong></div><dl><div><dt>Siap Diantar</dt><dd>${n(x.ready)}</dd></div><div><dt>Verifikasi</dt><dd>${n(x.verifications)}</dd></div><div><dt>Tindak Lanjut</dt><dd>${n(x.followUps)}</dd></div><div><dt>Pengantaran Ulang</dt><dd>${n(x.redeliveries)}</dd></div></dl></article>`).join('')}</div>`;
+  }
+
+  function courierMobileCards(rows = []) {
+    if (!rows.length) return '';
+    return `<div class="mgmt-mobile-staff-list courier-mobile-list">${rows.map(x => {
+      const completed = Number(x.delivered||0) + Number(x.failed||0);
+      return `<article class="mgmt-mobile-staff-card courier-mobile-card"><div class="mgmt-mobile-staff-head"><div><span>KURIR</span><h4>${esc(x.name)}</h4>${x.topRegion ? `<p>${esc(x.topRegion)}</p>` : ''}</div><strong>${pct(x.successRate)}<small>keberhasilan</small></strong></div><dl><div><dt>Tugas selesai</dt><dd>${n(completed)}</dd></div><div><dt>Terkirim</dt><dd>${n(x.delivered)}</dd></div><div><dt>Gagal antar</dt><dd>${n(x.failed)}</dd></div><div><dt>Pending</dt><dd>${n(x.pendingDeliveries||0)}</dd></div><div><dt>Kendala</dt><dd>${n(x.incidents)}</dd></div><div class="wide-stat"><dt>Durasi penyelesaian</dt><dd>${performanceDurationCell(x.timeStats)}</dd></div></dl></article>`;
+    }).join('')}</div>`;
+  }
+
   async function renderHome() {
     setManagementPageMode('summary');
     page().innerHTML = `${hero('Ringkasan Eksekutif','Gambaran singkat layanan pengantaran obat untuk pemantauan dan pengambilan keputusan.')}<section class="section">${filterBar()}<div id="mgmtHome" class="mgmt-loading">Memuat data…</div></section>`;
@@ -249,9 +272,11 @@ export function createManagementModule(ctx) {
   function drawHome() {
     const d = state.data || {}, k = d.kpi || {}, v = d.verification || {}, inc = d.incidentSummary || {};
     const root = document.getElementById('mgmtHome'); if (!root) return;
-    root.innerHTML = `<div class="executive-heading"><div><span>RINGKASAN EKSEKUTIF</span><h2>Key Performance Indicator (KPI)</h2><p>Indikator utama layanan pada periode ${esc(periodLabel())}.</p></div></div>
-      <div class="kpi-grid mgmt-kpi-grid executive-kpi-grid">${metric('Total Pendaftaran',n(k.total),'Kasus pada periode','neutral-soft')}${metric('Terkirim',n(k.delivered),`${n(k.failed)} gagal antar`,'success-soft')}${metric('Gagal Antar',n(k.failed),'Pengantaran yang tidak berhasil','danger-soft')}${metric('Dalam Perjalanan',n(k.transit),`${n(k.ready)} siap diantar`,'transit-soft')}${metric('Penerimaan Terverifikasi',pct(v.rate),`${n(v.verified)} dari ${n(v.eligible)} penerimaan`,'teal-soft')}${metric('Kendala Aktif',n(inc.active),`${n(inc.total)} kendala tercatat`,'warning-soft')}</div>
+    root.innerHTML = `<div class="executive-heading executive-overview-heading"><div><span>EXECUTIVE OVERVIEW</span><h2>Kondisi Layanan Periode Ini</h2><p>Tren dan status utama untuk periode ${esc(periodLabel())}.</p></div></div>
       <div class="executive-overview-grid"><div class="content-card mgmt-chart-card executive-trend-card"><div class="mgmt-card-head"><div><span class="section-kicker">TREN LAYANAN</span><h3>Pergerakan Harian</h3><p>Pendaftaran, terkirim, dan gagal antar.</p></div></div>${lineChart(d.daily||[])}</div>${executiveStatusCard(k)}</div>
+      ${executiveHighlights(k,v,inc)}
+      <div class="executive-heading executive-kpi-heading"><div><span>INDIKATOR UTAMA</span><h2>Key Performance Indicator (KPI)</h2><p>Rincian angka utama layanan pada periode terpilih.</p></div></div>
+      <div class="kpi-grid mgmt-kpi-grid executive-kpi-grid">${metric('Total Pendaftaran',n(k.total),'Kasus pada periode','neutral-soft')}${metric('Terkirim',n(k.delivered),`${n(k.failed)} gagal antar`,'success-soft')}${metric('Gagal Antar',n(k.failed),'Pengantaran yang tidak berhasil','danger-soft')}${metric('Dalam Perjalanan',n(k.transit),`${n(k.ready)} siap diantar`,'transit-soft')}${metric('Penerimaan Terverifikasi',pct(v.rate),`${n(v.verified)} dari ${n(v.eligible)} penerimaan`,'teal-soft')}${metric('Kendala Aktif',n(inc.active),`${n(inc.total)} kendala tercatat`,'warning-soft')}</div>
       ${activeIncidentPanel(d.activeIncidents || [])}
       <div class="section-head mgmt-subhead"><div><h2>Waktu Layanan</h2><p>Durasi digunakan untuk membaca proses layanan, bukan sebagai satu-satunya ukuran kinerja petugas.</p></div></div>
       <div class="time-insight-grid executive-time-grid">${timeInsight(d.timeStats?.total,'Total Waktu Layanan','Pendaftaran hingga obat diterima')}${timeInsight(d.timeStats?.pharmacy,'Pendaftaran hingga Siap Diantar')}${timeInsight(d.timeStats?.consolidation,'Menunggu Diambil Kurir')}${timeInsight(d.timeStats?.courier,'Durasi Penyelesaian Pengantaran')}</div>
@@ -281,13 +306,13 @@ export function createManagementModule(ctx) {
     const p = d.pharmacyPerformance || {staff:[],totals:{}};
     const rows = p.staff || [], t = p.totals || {};
     return `<div class="kpi-grid">${metric('Petugas Aktif di Periode',n(rows.length),'Memiliki aktivitas Farmasi')}${metric('Pendaftaran Ditangani',n(t.registrations))}${metric('Ditandai Siap Diantar',n(t.ready))}${metric('Verifikasi',n(t.verifications))}${metric('Tindak Lanjut',n(t.followUps))}${metric('Pengantaran Ulang Dibuat',n(t.redeliveries))}</div>
-      <div class="content-card table-scroll mgmt-table-card"><div class="mgmt-card-head"><div><h3>Aktivitas Petugas Farmasi</h3><p>Aktivitas dihitung berdasarkan petugas yang benar-benar melakukan setiap tindakan.</p></div></div>${rows.length ? `<table class="data-table mgmt-table"><thead><tr><th>Petugas Farmasi</th><th>Pendaftaran</th><th>Siap Diantar</th><th>Verifikasi</th><th>Tindak Lanjut</th><th>Pengantaran Ulang</th></tr></thead><tbody>${rows.map(x => `<tr><td><strong>${esc(x.name)}</strong></td><td>${n(x.registrations)}</td><td>${n(x.ready)}</td><td>${n(x.verifications)}</td><td>${n(x.followUps)}</td><td>${n(x.redeliveries)}</td></tr>`).join('')}</tbody></table>` : empty('Belum ada aktivitas Farmasi pada periode ini.')}</div>
+      <div class="content-card mgmt-table-card"><div class="mgmt-card-head"><div><h3>Aktivitas Petugas Farmasi</h3><p>Aktivitas dihitung berdasarkan petugas yang benar-benar melakukan setiap tindakan.</p></div></div>${rows.length ? `<div class="mgmt-desktop-table table-scroll"><table class="data-table mgmt-table"><thead><tr><th>Petugas Farmasi</th><th>Pendaftaran</th><th>Siap Diantar</th><th>Verifikasi</th><th>Tindak Lanjut</th><th>Pengantaran Ulang</th></tr></thead><tbody>${rows.map(x => `<tr><td><strong>${esc(x.name)}</strong></td><td>${n(x.registrations)}</td><td>${n(x.ready)}</td><td>${n(x.verifications)}</td><td>${n(x.followUps)}</td><td>${n(x.redeliveries)}</td></tr>`).join('')}</tbody></table></div>${pharmacyMobileCards(rows)}` : empty('Belum ada aktivitas Farmasi pada periode ini.')}</div>
       <div class="section-head mgmt-subhead"><div><h2>Waktu Proses Farmasi</h2><p>Indikator proses keseluruhan, bukan peringkat kecepatan petugas.</p></div></div><div class="time-insight-grid single-row">${timeInsight(d.timeStats?.pharmacy,'Pendaftaran hingga Siap Diantar')}</div>`;
   }
   function courierPerformanceView(d) {
     const rows = d.couriers || [], inc = d.incidentSummary || {};
     return `<div class="kpi-grid">${metric('Kurir Aktif di Periode',n(rows.length),'Memiliki aktivitas pengantaran')}${metric('Pengantaran Selesai',n(Number(d.kpi?.delivered||0)+Number(d.kpi?.failed||0)),`${n(d.kpi?.delivered)} terkirim`)}${metric('Gagal Antar',n(d.kpi?.failed||0))}${metric('Kendala',n(inc.total),`${n(inc.active)} masih aktif`)}</div>
-      <div class="content-card table-scroll mgmt-table-card"><div class="mgmt-card-head"><div><h3>Kinerja Kurir</h3><p>Durasi dipengaruhi rute, jarak, lalu lintas, konsolidasi paket, Pending, dan keberadaan penerima.</p></div></div>${rows.length ? `<table class="data-table mgmt-table"><thead><tr><th>Kurir</th><th>Tugas Selesai</th><th>Terkirim</th><th>Gagal Antar</th><th>Tingkat Keberhasilan</th><th>Pending</th><th>Kendala</th><th>Durasi Penyelesaian</th></tr></thead><tbody>${rows.map(x => `<tr><td><strong>${esc(x.name)}</strong><small class="table-subtext">${esc(x.topRegion||'')}</small></td><td>${n(Number(x.delivered||0)+Number(x.failed||0))}</td><td>${n(x.delivered)}</td><td>${n(x.failed)}</td><td><strong>${pct(x.successRate)}</strong></td><td>${n(x.pendingDeliveries||0)}</td><td>${n(x.incidents)}</td><td>${performanceDurationCell(x.timeStats)}</td></tr>`).join('')}</tbody></table>` : empty('Belum ada aktivitas Kurir pada periode ini.')}</div>`;
+      <div class="content-card mgmt-table-card"><div class="mgmt-card-head"><div><h3>Kinerja Kurir</h3><p>Durasi dipengaruhi rute, jarak, lalu lintas, konsolidasi paket, Pending, dan keberadaan penerima.</p></div></div>${rows.length ? `<div class="mgmt-desktop-table table-scroll"><table class="data-table mgmt-table"><thead><tr><th>Kurir</th><th>Tugas Selesai</th><th>Terkirim</th><th>Gagal Antar</th><th>Tingkat Keberhasilan</th><th>Pending</th><th>Kendala</th><th>Durasi Penyelesaian</th></tr></thead><tbody>${rows.map(x => `<tr><td><strong>${esc(x.name)}</strong><small class="table-subtext">${esc(x.topRegion||'')}</small></td><td>${n(Number(x.delivered||0)+Number(x.failed||0))}</td><td>${n(x.delivered)}</td><td>${n(x.failed)}</td><td><strong>${pct(x.successRate)}</strong></td><td>${n(x.pendingDeliveries||0)}</td><td>${n(x.incidents)}</td><td>${performanceDurationCell(x.timeStats)}</td></tr>`).join('')}</tbody></table></div>${courierMobileCards(rows)}` : empty('Belum ada aktivitas Kurir pada periode ini.')}</div>`;
   }
   function performanceDurationCell(stats = {}) {
     const sample = Number(stats.sample || 0);
