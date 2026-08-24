@@ -209,12 +209,17 @@ export class PengantaranApi {
     const mutationId = this._mutationIdFor(key);
     const run = async () => {
       let busyAttempts = 0;
+      const operational = /^(pharmacy|courier)\./.test(String(method || ''));
+      const retryLimit = operational ? Math.max(5, this.mutationBusyRetryCount) : this.mutationBusyRetryCount;
       while (true) {
         try { return await this.transport.callMutation(method, mutationId, ...args); }
         catch (error) {
-          if (String(error?.code || '') !== 'REQUEST_IN_PROGRESS' || busyAttempts >= this.mutationBusyRetryCount) throw error;
+          const code = String(error?.code || '');
+          const retryable = code === 'REQUEST_IN_PROGRESS' || code === 'SERVER_BUSY';
+          if (!retryable || busyAttempts >= retryLimit || !navigator.onLine) throw error;
           busyAttempts += 1;
-          await wait(this.mutationBusyRetryDelayMs * busyAttempts);
+          const base = code === 'SERVER_BUSY' ? Math.min(900, 320 + (busyAttempts * 110)) : this.mutationBusyRetryDelayMs;
+          await wait(base + Math.floor(Math.random() * 120));
         }
       }
     };

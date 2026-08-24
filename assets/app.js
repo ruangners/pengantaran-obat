@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc23';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc23';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc23';
-import { createCourierModule } from './courier.js?v=1.0.0-rc23';
-import { createAdminModule } from './admin.js?v=1.0.0-rc23';
-import { createManagementModule } from './management.js?v=1.0.0-rc23';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc24';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc24';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc24';
+import { createCourierModule } from './courier.js?v=1.0.0-rc24';
+import { createAdminModule } from './admin.js?v=1.0.0-rc24';
+import { createManagementModule } from './management.js?v=1.0.0-rc24';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -530,7 +530,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc23',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc24',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {
