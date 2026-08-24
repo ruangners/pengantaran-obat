@@ -176,6 +176,8 @@ export class PengantaranApi {
     this.mutationReplayWindowMs = Number(options.mutationReplayWindowMs || 120000);
     this.mutationBusyRetryCount = Number(options.mutationBusyRetryCount || 2);
     this.mutationBusyRetryDelayMs = Number(options.mutationBusyRetryDelayMs || 700);
+    this.loginRetryCount = Math.max(0, Number(options.loginRetryCount ?? 1));
+    this.loginRetryDelayMs = Math.max(0, Number(options.loginRetryDelayMs ?? 650));
   }
 
   async _read(method, ...args) {
@@ -222,12 +224,24 @@ export class PengantaranApi {
   }
 
   ping() { return this._read('system.ping'); }
-  login(pin, clientInfo) { return this.transport.call('auth.login', String(pin || ''), clientInfo || {}); }
+  async login(pin, clientInfo) {
+    let attempt = 0;
+    while (true) {
+      try { return await this.transport.call('auth.login', String(pin || ''), clientInfo || {}); }
+      catch (error) {
+        const retryable = ['REQUEST_TIMEOUT','REQUEST_SUBMIT_FAILED'].includes(String(error?.code || ''));
+        if (!retryable || attempt >= this.loginRetryCount || !navigator.onLine) throw error;
+        attempt += 1;
+        await wait(this.loginRetryDelayMs * attempt);
+      }
+    }
+  }
   session(token) { return this._read('auth.session', String(token || '')); }
   logout(token) { return this._mutate('auth.logout', String(token || '')); }
 
   farmasiBootstrap(token) { return this._read('pharmacy.bootstrap', String(token || '')); }
   farmasiRows(token, searchText = '') { return this._read('pharmacy.today', String(token || ''), String(searchText || '')); }
+  farmasiSnapshot(token) { return this._read('pharmacy.snapshot', String(token || '')); }
   pendingReceiptVerifications(token) { return this._read('pharmacy.receiptQueue', String(token || '')); }
   failedDeliveryFollowUps(token) { return this._read('pharmacy.followUps', String(token || '')); }
   confirmReturnedToFarmasi(token, id) { return this._mutate('pharmacy.confirmReturn', String(token || ''), String(id || '')); }
@@ -288,7 +302,7 @@ export class PengantaranApi {
   adminAuditRows(token, limit = 100) { return this._read('admin.audit', String(token || ''), Number(limit || 100)); }
   deliveryHistory(token, id) { return this._read('admin.deliveryHistory', String(token || ''), String(id || '')); }
 
-  managementData(token, startDate, endDate, basis = 'DAFTAR') {
-    return this._read('management.dashboard', String(token || ''), String(startDate || ''), String(endDate || ''), String(basis || 'DAFTAR'));
+  managementData(token, startDate, endDate, basis = 'DAFTAR', scope = 'HOME', force = false) {
+    return this._read('management.dashboard', String(token || ''), String(startDate || ''), String(endDate || ''), String(basis || 'DAFTAR'), String(scope || 'HOME'), force === true);
   }
 }

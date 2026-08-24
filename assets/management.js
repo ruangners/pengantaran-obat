@@ -1,4 +1,4 @@
-import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc22';
+import { buildManagementPdf, downloadPdfBlob, reportFilename } from './report-pdf.js?v=1.0.0-rc23';
 export function createManagementModule(ctx) {
   const esc = ctx.escapeHtml;
   const api = () => ctx.getApi();
@@ -6,6 +6,7 @@ export function createManagementModule(ctx) {
   const page = () => document.getElementById('pageContent');
   const setBusy = (button,busy,label='Memproses…') => { if (typeof ctx.setButtonBusy === 'function') return ctx.setButtonBusy(button,busy,label); if(!button)return; if(busy){button.dataset.oldLabel=button.textContent;button.disabled=true;button.textContent=label;}else{button.disabled=false;if(button.dataset.oldLabel)button.textContent=button.dataset.oldLabel;} };
   const MIN_STATS_SAMPLE = Math.max(2, Number(ctx.minimumStatsSample || 10));
+  const CLIENT_SCOPE_CACHE_MS = 45000;
 
   const state = {
     data: null,
@@ -15,6 +16,7 @@ export function createManagementModule(ctx) {
     start: '',
     end: '',
     lastLoadedKey: '',
+    dataCache: new Map(),
     performanceTab: 'pharmacy'
   };
 
@@ -129,24 +131,45 @@ export function createManagementModule(ctx) {
     if (basis) basis.onchange = () => { state.basis = basis.value; };
   }
 
-  async function ensureData(force = false) {
-    const key = [state.start, state.end, state.basis].join('|');
-    if (state.data && !force && state.lastLoadedKey === key) return state.data;
-    if (state.loading && !force) return state.loading;
-    state.loading = (async () => {
-      const response = await api().managementData(token(), state.start, state.end, state.basis);
-      state.data = response.data?.dashboard || {};
-      state.lastLoadedKey = key;
-      return state.data;
-    })();
-    try { return await state.loading; } finally { state.loading = null; }
+  function currentScope() {
+    const view = String(typeof ctx.getView === 'function' ? ctx.getView() : '').toLowerCase();
+    if (view === 'performance') return 'PERFORMANCE';
+    if (view === 'areas') return 'AREAS';
+    if (view === 'reports') return 'REPORTS';
+    return 'HOME';
   }
 
-  async function refreshCurrent(draw) {
+  async function ensureData(force = false, scope = 'HOME') {
+    const normalizedScope = String(scope || 'HOME').toUpperCase();
+    const key = [state.start, state.end, state.basis, normalizedScope].join('|');
+    if (!force && state.dataCache.has(key)) {
+      const hit = state.dataCache.get(key);
+      if (hit && Date.now() - Number(hit.at || 0) < CLIENT_SCOPE_CACHE_MS) {
+        state.data = hit.data || {};
+        state.lastLoadedKey = key;
+        return state.data;
+      }
+      state.dataCache.delete(key);
+    }
+    if (state.loading && !force && state.loading.key === key) return state.loading.promise;
+    const promise = (async () => {
+      const response = await api().managementData(token(), state.start, state.end, state.basis, normalizedScope, force === true);
+      const dashboard = response.data?.dashboard || {};
+      state.data = dashboard;
+      state.lastLoadedKey = key;
+      state.dataCache.set(key, {data:dashboard,at:Date.now()});
+      return dashboard;
+    })();
+    state.loading = { key, promise };
+    try { return await promise; }
+    finally { if (state.loading?.promise === promise) state.loading = null; }
+  }
+
+  async function refreshCurrent(draw, scope = currentScope()) {
     const button = document.getElementById('mgmtRefresh');
     if (button) setBusy(button,true,'Memuat…');
     try {
-      await ensureData(true);
+      await ensureData(true, scope);
       draw();
       ctx.showToast('Data Manajemen diperbarui.', 'success');
     } catch (error) { ctx.showToast(error.message, 'error'); }
@@ -216,11 +239,11 @@ export function createManagementModule(ctx) {
     setManagementPageMode('summary');
     page().innerHTML = `${hero('Ringkasan Eksekutif','Gambaran singkat layanan pengantaran obat untuk pemantauan dan pengambilan keputusan.')}<section class="section">${filterBar()}<div id="mgmtHome" class="mgmt-loading">Memuat data…</div></section>`;
     bindFilter(() => loadHome(true));
-    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawHome);
+    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawHome, 'HOME');
     await loadHome(false);
   }
   async function loadHome(force) {
-    try { await ensureData(force); drawHome(); }
+    try { await ensureData(force, 'HOME'); drawHome(); }
     catch (error) { document.getElementById('mgmtHome').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
   }
   function drawHome() {
@@ -242,11 +265,11 @@ export function createManagementModule(ctx) {
     page().innerHTML = `${hero('Kinerja Layanan & Petugas','Aktivitas Farmasi dan Kurir pada periode yang dipilih.','KINERJA')}<section class="section">${filterBar()}<div class="segmented-tabs performance-tabs"><button data-performance-tab="pharmacy" class="${state.performanceTab==='pharmacy'?'active':''}">Farmasi</button><button data-performance-tab="courier" class="${state.performanceTab==='courier'?'active':''}">Kurir</button></div><div id="mgmtPerformance" class="mgmt-loading">Memuat kinerja…</div></section>`;
     bindFilter(() => loadPerformance(true));
     document.querySelectorAll('[data-performance-tab]').forEach(button => button.onclick = () => { state.performanceTab = button.dataset.performanceTab; document.querySelectorAll('[data-performance-tab]').forEach(x => x.classList.toggle('active', x.dataset.performanceTab === state.performanceTab)); drawPerformance(); });
-    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawPerformance);
+    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawPerformance, 'PERFORMANCE');
     await loadPerformance(false);
   }
   async function loadPerformance(force) {
-    try { await ensureData(force); drawPerformance(); }
+    try { await ensureData(force, 'PERFORMANCE'); drawPerformance(); }
     catch (error) { document.getElementById('mgmtPerformance').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; }
   }
   function drawPerformance() {
@@ -277,10 +300,10 @@ export function createManagementModule(ctx) {
     setManagementPageMode();
     page().innerHTML = `${hero('Wilayah Pengantaran','Sebaran pendaftaran, pengantaran terkirim, dan alasan gagal berdasarkan wilayah.','WILAYAH')}<section class="section">${filterBar()}<div id="mgmtAreas" class="mgmt-loading">Memuat wilayah…</div></section>`;
     bindFilter(() => loadAreas(true));
-    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawAreas);
+    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawAreas, 'AREAS');
     await loadAreas(false);
   }
-  async function loadAreas(force) { try { await ensureData(force); drawAreas(); } catch (error) { document.getElementById('mgmtAreas').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; } }
+  async function loadAreas(force) { try { await ensureData(force, 'AREAS'); drawAreas(); } catch (error) { document.getElementById('mgmtAreas').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; } }
   function drawAreas() {
     const d = state.data || {}, root = document.getElementById('mgmtAreas'); if (!root) return;
     root.innerHTML = `<div class="mgmt-dashboard-grid"><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Wilayah Pendaftaran</h3><p>Asal pendaftaran terbanyak.</p></div></div>${barRanking(d.registrationRegions||[],12)}</div><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Wilayah Terkirim</h3><p>Tujuan pengantaran yang selesai.</p></div></div>${barRanking(d.deliveredRegions||[],12)}</div></div><div class="mgmt-dashboard-grid"><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Kecamatan</h3></div></div>${rankingTable(d.districts||[],'Kecamatan')}</div><div class="content-card mgmt-chart-card"><div class="mgmt-card-head"><div><h3>Alasan Gagal Antar</h3></div></div>${rankingTable(d.deliveryAnalytics?.failureReasons?.length ? d.deliveryAnalytics.failureReasons : d.failureReasons||[],'Alasan')}</div></div>`;
@@ -290,10 +313,10 @@ export function createManagementModule(ctx) {
     setManagementPageMode();
     page().innerHTML = `${hero('Laporan','Siapkan ringkasan periode untuk dicetak atau disimpan sebagai PDF.','LAPORAN')}<section class="section">${filterBar()}<div id="mgmtReports" class="mgmt-loading">Menyiapkan laporan…</div></section>`;
     bindFilter(() => loadReports(true));
-    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawReports);
+    document.getElementById('mgmtRefresh').onclick = () => refreshCurrent(drawReports, 'REPORTS');
     await loadReports(false);
   }
-  async function loadReports(force) { try { await ensureData(force); drawReports(); } catch (error) { document.getElementById('mgmtReports').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; } }
+  async function loadReports(force) { try { await ensureData(force, 'REPORTS'); drawReports(); } catch (error) { document.getElementById('mgmtReports').innerHTML = `<div class="alert error">${esc(error.message)}</div>`; } }
   function drawReports() {
     const root = document.getElementById('mgmtReports'); if (!root) return;
     root.innerHTML = `<div class="report-actions"><button id="downloadManagementReport" class="primary-btn">Unduh PDF</button><button id="printManagementReport" class="secondary-btn">Cetak Laporan</button></div>${reportPreview(state.data||{})}`;
@@ -367,6 +390,7 @@ export function createManagementModule(ctx) {
     state.data = null;
     state.loading = null;
     state.lastLoadedKey = '';
+    state.dataCache.clear();
     state.basis = 'DAFTAR';
     state.performanceTab = 'pharmacy';
     applyPreset('month');

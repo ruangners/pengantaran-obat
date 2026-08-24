@@ -1,9 +1,9 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc22';
-import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc22';
-import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc22';
-import { createCourierModule } from './courier.js?v=1.0.0-rc22';
-import { createAdminModule } from './admin.js?v=1.0.0-rc22';
-import { createManagementModule } from './management.js?v=1.0.0-rc22';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc23';
+import { AppsScriptTransport, PengantaranApi } from './api-client.js?v=1.0.0-rc23';
+import { createFarmasiModule } from './farmasi.js?v=1.0.0-rc23';
+import { createCourierModule } from './courier.js?v=1.0.0-rc23';
+import { createAdminModule } from './admin.js?v=1.0.0-rc23';
+import { createManagementModule } from './management.js?v=1.0.0-rc23';
 
 const $ = id => document.getElementById(id);
 const state = {
@@ -215,6 +215,8 @@ function initTransport(endpoint) {
   state.api = new PengantaranApi(state.transport,{
     readRetryCount:APP_CONFIG.readRetryCount,
     readRetryDelayMs:APP_CONFIG.readRetryDelayMs,
+    loginRetryCount:APP_CONFIG.loginRetryCount,
+    loginRetryDelayMs:APP_CONFIG.loginRetryDelayMs,
     mutationReplayWindowMs:APP_CONFIG.mutationReplayWindowMs,
     mutationBusyRetryCount:APP_CONFIG.mutationBusyRetryCount,
     mutationBusyRetryDelayMs:APP_CONFIG.mutationBusyRetryDelayMs
@@ -528,7 +530,7 @@ async function applyAppUpdate() {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc22',{updateViaCache:'none'});
+  const registration = await navigator.serviceWorker.register('./sw.js?v=1.0.0-rc23',{updateViaCache:'none'});
   state.updateRegistration = registration;
   if (registration.waiting && navigator.serviceWorker.controller) showUpdateAvailable(registration);
   registration.addEventListener('updatefound',() => {

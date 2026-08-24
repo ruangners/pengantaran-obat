@@ -6,6 +6,8 @@ export function createCourierModule(ctx) {
     ready: [],
     mine: [],
     history: [],
+    historyLoaded: false,
+    historyLoading: null,
     activeIncident: null,
     search: '',
     timer: null
@@ -24,6 +26,8 @@ export function createCourierModule(ctx) {
     state.ready = [];
     state.mine = [];
     state.history = [];
+    state.historyLoaded = false;
+    state.historyLoading = null;
     state.activeIncident = null;
     state.search = '';
     state.timer = null;
@@ -38,14 +42,29 @@ export function createCourierModule(ctx) {
       state.master = data.master || {};
       state.ready = Array.isArray(data.ready) ? data.ready : [];
       state.mine = Array.isArray(data.mine) ? data.mine : [];
-      state.history = Array.isArray(data.history) ? data.history : [];
+      if (Array.isArray(data.history)) { state.history = data.history; state.historyLoaded = true; }
       state.activeIncident = data.activeIncident || null;
       state.loaded = true;
       startAutoRefresh();
+      if (data.historyDeferred === true && !state.historyLoaded) loadHistoryBackground().catch(() => {});
       return state;
     })();
     try { return await state.loading; }
     finally { state.loading = null; }
+  }
+
+  async function loadHistoryBackground(force = false) {
+    if (state.historyLoaded && !force) return state.history;
+    if (state.historyLoading && !force) return state.historyLoading;
+    state.historyLoading = (async () => {
+      const history = await api().courierHistory(token(), 50);
+      state.history = Array.isArray(history.data?.rows) ? history.data.rows : [];
+      state.historyLoaded = true;
+      if (ctx.getView() === 'home') renderHomeData();
+      if (ctx.getView() === 'history') renderHistoryData();
+      return state.history;
+    })();
+    try { return await state.historyLoading; } finally { state.historyLoading = null; }
   }
 
   async function refreshRows({includeHistory = false, silent = false} = {}) {
@@ -55,10 +74,7 @@ export function createCourierModule(ctx) {
       state.ready = Array.isArray(data.ready) ? data.ready : [];
       state.mine = Array.isArray(data.mine) ? data.mine : [];
       state.activeIncident = data.activeIncident || null;
-      if (includeHistory) {
-        const history = await api().courierHistory(token(), 50);
-        state.history = Array.isArray(history.data?.rows) ? history.data.rows : [];
-      }
+      if (includeHistory) await loadHistoryBackground(true);
       rerenderVisibleData();
       return state;
     } catch (err) {
@@ -142,7 +158,7 @@ export function createCourierModule(ctx) {
     metrics.innerHTML = [
       metric('Siap Diambil', state.ready.length, 'Paket tersedia', '◎', 'tone-ready'),
       metric('Tugas Aktif', state.mine.length, 'Sedang dibawa', '➜', 'tone-transit'),
-      metric('Selesai Hari Ini', state.history.length, 'Riwayat kurir', '✓', 'tone-success'),
+      metric('Selesai Hari Ini', state.historyLoaded ? state.history.length : '…', state.historyLoaded ? 'Riwayat kurir' : 'Memuat riwayat', '✓', 'tone-success'),
       metric('Kendala Aktif', state.activeIncident ? 1 : 0, state.activeIncident ? state.activeIncident.type : 'Tidak ada', '⚠', state.activeIncident ? 'tone-warning' : '')
     ].join('');
     const incident = document.getElementById('courierHomeIncident');
@@ -267,8 +283,8 @@ export function createCourierModule(ctx) {
     const ok = await ctx.confirmAction({title:'Lanjut antar?',message:'Status Pending akan ditutup. Gunakan saat Anda akan mencoba kembali pengantaran hari ini.',confirmLabel:'Ya, Lanjut Antar'});
     if(!ok) return;
     setBusy(button,true,'Melanjutkan…');
-    try{await api().resumeDelivery(token(),id);await refreshRows({silent:true});ctx.showToast('Pending ditutup. Pengantaran dilanjutkan.','success');}
-    catch(err){ctx.showToast(err.message,'error');await refreshRows({silent:true}).catch(()=>{});}
+    try{const res=await api().resumeDelivery(token(),id);if(res.data?.record)state.mine=state.mine.map(x=>String(x.id)===String(id)?res.data.record:x);else state.mine=state.mine.map(x=>String(x.id)===String(id)?Object.assign({},x,{pending:false,pendingReason:'',pendingDetail:'',pendingSince:''}):x);renderTasksData();ctx.showToast('Pending ditutup. Pengantaran dilanjutkan.','success');setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);}
+    catch(err){ctx.showToast(err.message,'error');setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);}
     finally{setBusy(button,false);}
   }
 
@@ -357,8 +373,10 @@ export function createCourierModule(ctx) {
     const button = document.getElementById('pendingSubmit'); setBusy(button,true,'Menyimpan…');
     try {
       const res = await api().pendingTask(token(), id, {reason,detail});
-      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Status Pending disimpan. Paket tetap dibawa oleh Kurir.', 'warning', 6500);
+      if(res.data?.record)state.mine=state.mine.map(x=>String(x.id)===String(id)?res.data.record:x);
+      ctx.closeModal(); renderTasksData(); ctx.showToast('Status Pending disimpan. Paket tetap dibawa oleh Kurir.', 'warning', 6500);
       if (res.data?.waAction) openWaAction(res.data.waAction, 'Beritahu pasien — pengantaran Pending');
+      setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);
     } catch (err) { if (msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
     finally { setBusy(button,false); }
   }
@@ -380,8 +398,10 @@ export function createCourierModule(ctx) {
     const button = document.getElementById('failSubmit'); setBusy(button,true,'Menyimpan…');
     try {
       const res = await api().failTask(token(), id, {reason,detail});
-      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Gagal Antar disimpan. Kembalikan obat ke Farmasi.', 'warning', 7000);
+      if(res.data?.record)state.mine=state.mine.map(x=>String(x.id)===String(id)?res.data.record:x);
+      ctx.closeModal(); renderTasksData(); ctx.showToast('Gagal Antar disimpan. Kembalikan obat ke Farmasi.', 'warning', 7000);
       if (res.data?.waAction) openWaAction(res.data.waAction, 'Beritahu pasien — Gagal Antar');
+      setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);
     } catch (err) { if (msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
     finally { setBusy(button,false); }
   }
@@ -403,8 +423,11 @@ export function createCourierModule(ctx) {
     try {
       const res = await api().reportIncident(token(), {type,delayEstimate,detail});
       state.activeIncident = res.data?.incident || null;
-      ctx.closeModal(); await refreshRows({silent:true}); ctx.showToast('Kendala Kurir berhasil dicatat.', 'warning');
+      const affected=Array.isArray(res.data?.affectedRecords)?res.data.affectedRecords:[];
+      if(affected.length){const map=new Map(affected.map(x=>[String(x.id),x]));state.mine=state.mine.map(x=>map.get(String(x.id))||x);}
+      ctx.closeModal(); rerenderVisibleData(); ctx.showToast('Kendala Kurir berhasil dicatat.', 'warning');
       if (Array.isArray(res.data?.waActions) && res.data.waActions.length) openIncidentWaActions(res.data.waActions);
+      setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);
     } catch (err) { if(msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
     finally { setBusy(button,false); }
   }
@@ -423,7 +446,8 @@ export function createCourierModule(ctx) {
     const button = document.getElementById('resolveSubmit'); setBusy(button,true,'Menyimpan…');
     try {
       await api().resolveIncident(token(), state.activeIncident.id, note);
-      ctx.closeModal(); state.activeIncident = null; await refreshRows({silent:true}); ctx.showToast('Kendala diselesaikan. Pengantaran dapat dilanjutkan.', 'success');
+      ctx.closeModal(); state.activeIncident = null; state.mine=state.mine.map(x=>Object.assign({},x,{incidentStatus:'',activeIncidentId:''})); rerenderVisibleData(); ctx.showToast('Kendala diselesaikan. Pengantaran dapat dilanjutkan.', 'success');
+      setTimeout(()=>refreshRows({silent:true}).catch(()=>{}),160);
     } catch (err) { if(msg) msg.innerHTML = `<div class="alert error">${esc(err.message)}</div>`; }
     finally { setBusy(button,false); }
   }
@@ -432,11 +456,11 @@ export function createCourierModule(ctx) {
     page().innerHTML = `<section class="hero compact"><div><div class="eyebrow">RIWAYAT</div><h1>Selesai Hari Ini</h1><p>Pengantaran yang selesai oleh akun Kurir ini pada hari ini.</p></div><div class="hero-actions"><button id="historyRefresh" class="secondary-btn">↻ Segarkan</button></div></section><section class="section"><div id="historyContent"><div class="inline-loading">Memuat riwayat…</div></div></section>`;
     document.getElementById('historyRefresh')?.addEventListener('click', async e => {
       setBusy(e.currentTarget,true,'Memuat…');
-      try { const res = await api().courierHistory(token(),50); state.history = res.data?.rows || []; renderHistoryData(); ctx.showToast('Riwayat diperbarui.','success'); }
+      try { const res = await api().courierHistory(token(),50); state.history = res.data?.rows || []; state.historyLoaded = true; renderHistoryData(); ctx.showToast('Riwayat diperbarui.','success'); }
       catch(err){ctx.showToast(err.message,'error');}
       finally{setBusy(e.currentTarget,false);}
     });
-    try { await ensureData(); renderHistoryData(); }
+    try { await ensureData(); if(!state.historyLoaded) await loadHistoryBackground(); renderHistoryData(); }
     catch(err){document.getElementById('historyContent').innerHTML=`<div class="alert error">${esc(err.message)}</div>`;}
   }
 

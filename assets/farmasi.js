@@ -1,4 +1,4 @@
-import { APP_CONFIG } from './config.js?v=1.0.0-rc22';
+import { APP_CONFIG } from './config.js?v=1.0.0-rc23';
 
 export function createFarmasiModule(ctx) {
   const state = {
@@ -111,6 +111,16 @@ export function createFarmasiModule(ctx) {
     return state.activeIncidents;
   }
 
+  async function loadSnapshot() {
+    const res = await api().farmasiSnapshot(token());
+    state.rows = res.data?.rows || [];
+    state.pending = res.data?.pending || [];
+    state.failedFollowUps = res.data?.failedFollowUps || [];
+    state.activeIncidents = res.data?.activeIncidents || [];
+    syncFarmasiBadges();
+    return state;
+  }
+
   function startAutoRefresh() {
     if (state.timer) return;
     state.timer = setInterval(() => refreshVisibleData({silent:true}).catch(() => {}), 30000);
@@ -123,7 +133,7 @@ export function createFarmasiModule(ctx) {
     state.autoRefreshBusy = true;
     try {
       if (view === 'home') {
-        await Promise.all([loadRows(''),loadPending(),loadFailedFollowUps(),loadActiveIncidents()]);
+        await loadSnapshot();
         renderHomeData();
       } else if (view === 'registration') {
         await loadActiveIncidents();
@@ -349,7 +359,7 @@ export function createFarmasiModule(ctx) {
     document.getElementById('homeRegister')?.addEventListener('click', () => ctx.navigate('registration'));
     document.getElementById('homeRefresh')?.addEventListener('click', async e => {
       buttonBusy(e.currentTarget, true, 'Memuat…');
-      try { await ensureData(true); renderHomeData(); ctx.showToast('Data Farmasi diperbarui.', 'success'); }
+      try { await loadSnapshot(); renderHomeData(); ctx.showToast('Data Farmasi diperbarui.', 'success'); }
       catch (err) { ctx.showToast(err.message, 'error'); }
       finally { buttonBusy(e.currentTarget, false); }
     });
@@ -761,6 +771,14 @@ export function createFarmasiModule(ctx) {
     return '';
   }
 
+  function patchFollowUpAttempt(id, attempt, {remove=false}={}){
+    const key=String(id||'');
+    if(remove){state.failedFollowUps=state.failedFollowUps.filter(item=>followUpId(item)!==key);syncFarmasiBadges();return;}
+    if(!attempt)return;
+    state.failedFollowUps=state.failedFollowUps.map(item=>followUpId(item)===key?Object.assign({},item,{attempt:Object.assign({},item.attempt||{},attempt)}):item);
+    syncFarmasiBadges();
+  }
+
   async function refreshFollowUp(anchorId=''){
     await loadFailedFollowUps();
     if(document.getElementById('followUpContent'))renderFollowUpData(anchorId);
@@ -769,7 +787,7 @@ export function createFarmasiModule(ctx) {
   function bindFollowUpEvents(){
     document.querySelectorAll('[data-open-follow-panel]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.id||'';state.followUpExpanded[id]=b.dataset.openFollowPanel||'';renderFollowUpData(id);}));
     document.querySelectorAll('[data-close-follow-panel]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.closeFollowPanel||'';delete state.followUpExpanded[id];renderFollowUpData(id);}));
-    document.querySelectorAll('[data-confirm-return]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.confirmReturn;buttonBusy(b,true,'Menyimpan…');try{await api().confirmReturnedToFarmasi(token(),id);await refreshFollowUp(id);ctx.showToast('Obat dikonfirmasi kembali ke Farmasi.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(b,false)}}));
+    document.querySelectorAll('[data-confirm-return]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.confirmReturn;buttonBusy(b,true,'Menyimpan…');try{const res=await api().confirmReturnedToFarmasi(token(),id);patchFollowUpAttempt(id,res.data?.attempt);renderFollowUpData(id);ctx.showToast('Obat dikonfirmasi kembali ke Farmasi.','success');setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData(id)).catch(()=>{}),160);}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(b,false)}}));
     document.querySelectorAll('[data-followup-wa]').forEach(b=>b.addEventListener('click',()=>openFollowupWaDirect(b.dataset.followupWa,b)));
     document.querySelectorAll('[data-schedule-form]').forEach(form=>{const id=form.dataset.scheduleForm,dom=safeDomId(id),radios=form.querySelectorAll(`input[name="retry-mode-${dom}"]`),wrap=form.querySelector(`[data-custom-date-wrap="${dom}"]`),todayWrap=form.querySelector(`[data-today-confirm-wrap="${dom}"]`);radios.forEach(el=>el.addEventListener('change',()=>{if(!el.checked)return;wrap?.classList.toggle('hidden',el.value!=='other');todayWrap?.classList.toggle('hidden',el.value!=='today');}));form.addEventListener('submit',e=>saveScheduleInline(e,id,dom));});
     document.querySelectorAll('[data-inline-retry]').forEach(form=>{const prefix=form.dataset.prefix;const id=form.dataset.inlineRetry;const rm=document.getElementById(`${prefix}-rm`),nm=document.getElementById(`${prefix}-name`);[rm,nm].forEach(el=>{if(el){el.readOnly=true;el.classList.add('locked-input');el.tabIndex=-1;}});bindAreaSearch(prefix);form.addEventListener('submit',e=>createRetryInline(e,id,prefix));});
@@ -786,12 +804,12 @@ export function createFarmasiModule(ctx) {
 
   async function openFollowupWaDirect(id,button){
     const w=reserveWhatsAppWindow();buttonBusy(button,true,'Menyiapkan WA…');
-    try{const res=await api().failedFollowupWa(token(),id);const wa=res.data?.waAction||null;if(wa)state.followUpWaActions[id]=wa;await refreshFollowUp(id);if(wa?.url){if(w)w.location.href=wa.url;else{ctx.showToast('Browser memblokir tab WhatsApp. Gunakan tombol Buka ulang WhatsApp pada kartu.','warning',7000);}}else{if(w)w.close();ctx.showToast('Pesan WhatsApp tidak tersedia.','error');}}
+    try{const res=await api().failedFollowupWa(token(),id);const wa=res.data?.waAction||null;if(wa)state.followUpWaActions[id]=wa;patchFollowUpAttempt(id,res.data?.attempt);renderFollowUpData(id);if(wa?.url){if(w)w.location.href=wa.url;else{ctx.showToast('Browser memblokir tab WhatsApp. Gunakan tombol Buka ulang WhatsApp pada kartu.','warning',7000);}}else{if(w)w.close();ctx.showToast('Pesan WhatsApp tidak tersedia.','error');}setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData(id)).catch(()=>{}),160);}
     catch(e){if(w)w.close();ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
   }
 
   async function saveScheduleInline(ev,id,dom){
-    ev.preventDefault();const form=ev.currentTarget,btn=form.querySelector('button[type="submit"]');const choice=form.querySelector(`input[name="retry-mode-${dom}"]:checked`)?.value||'tomorrow';const today=todayKey(),tomorrow=tomorrowKey();const custom=form.querySelector(`[data-custom-date="${dom}"]`)?.value||'';const selected=choice==='today'?today:choice==='tomorrow'?tomorrow:custom;if(!selected)return ctx.showToast('Pilih tanggal pengantaran ulang.','error');if(choice==='today'&&!form.querySelector(`[data-today-confirm="${dom}"]`)?.checked)return ctx.showToast('Konfirmasi dulu bahwa pengantaran ulang hari ini masih memungkinkan secara operasional.','warning',6500);buttonBusy(btn,true,'Menyimpan…');try{await api().planRedelivery(token(),id,{scheduleDate:selected});delete state.followUpExpanded[id];await refreshFollowUp(id);ctx.showToast(`Rencana pengantaran ulang disimpan: ${formatDateId(selected)}.`,'success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
+    ev.preventDefault();const form=ev.currentTarget,btn=form.querySelector('button[type="submit"]');const choice=form.querySelector(`input[name="retry-mode-${dom}"]:checked`)?.value||'tomorrow';const today=todayKey(),tomorrow=tomorrowKey();const custom=form.querySelector(`[data-custom-date="${dom}"]`)?.value||'';const selected=choice==='today'?today:choice==='tomorrow'?tomorrow:custom;if(!selected)return ctx.showToast('Pilih tanggal pengantaran ulang.','error');if(choice==='today'&&!form.querySelector(`[data-today-confirm="${dom}"]`)?.checked)return ctx.showToast('Konfirmasi dulu bahwa pengantaran ulang hari ini masih memungkinkan secara operasional.','warning',6500);buttonBusy(btn,true,'Menyimpan…');try{const res=await api().planRedelivery(token(),id,{scheduleDate:selected});patchFollowUpAttempt(id,res.data?.attempt);delete state.followUpExpanded[id];renderFollowUpData(id);ctx.showToast(`Rencana pengantaran ulang disimpan: ${formatDateId(selected)}.`,'success');setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData(id)).catch(()=>{}),160);}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(btn,false)}
   }
 
   async function createRetryInline(ev,id,prefix){
@@ -799,15 +817,15 @@ export function createFarmasiModule(ctx) {
   }
 
   async function saveSelfPickupInline(id,button){
-    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{await api().markSelfPickup(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp(id);ctx.showToast('Kasus menunggu pasien mengambil obat di Loket Farmasi.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{const res=await api().markSelfPickup(token(),id,note);patchFollowUpAttempt(id,res.data?.attempt);delete state.followUpExpanded[id];renderFollowUpData(id);ctx.showToast('Kasus menunggu pasien mengambil obat di Loket Farmasi.','success');setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData(id)).catch(()=>{}),160);}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
   }
 
   async function confirmSelfPickupInline(id,button){
-    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-confirm-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{await api().confirmSelfPickup(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp();ctx.showToast('Obat dikonfirmasi telah diambil. Tindak lanjut selesai.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-pickup-confirm-note="${safeDomId(id)}"]`)?.value.trim()||'';buttonBusy(button,true,'Menyimpan…');try{await api().confirmSelfPickup(token(),id,note);patchFollowUpAttempt(id,null,{remove:true});delete state.followUpExpanded[id];renderFollowUpData();ctx.showToast('Obat dikonfirmasi telah diambil. Tindak lanjut selesai.','success');setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData()).catch(()=>{}),160);}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
   }
 
   async function closeFailedInline(id,button){
-    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-close-note="${safeDomId(id)}"]`)?.value.trim()||'';if(!note)return ctx.showToast('Alasan penutupan layanan wajib diisi.','error');buttonBusy(button,true,'Menyimpan…');try{await api().closeFailedDelivery(token(),id,note);delete state.followUpExpanded[id];await refreshFollowUp();ctx.showToast('Layanan ditutup. Riwayat gagal antar tetap tersimpan.','success');}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
+    const note=document.querySelector(`#follow-card-${safeDomId(id)} [data-close-note="${safeDomId(id)}"]`)?.value.trim()||'';if(!note)return ctx.showToast('Alasan penutupan layanan wajib diisi.','error');buttonBusy(button,true,'Menyimpan…');try{await api().closeFailedDelivery(token(),id,note);patchFollowUpAttempt(id,null,{remove:true});delete state.followUpExpanded[id];renderFollowUpData();ctx.showToast('Layanan ditutup. Riwayat gagal antar tetap tersimpan.','success');setTimeout(()=>loadFailedFollowUps().then(()=>renderFollowUpData()).catch(()=>{}),160);}catch(e){ctx.showToast(e.message,'error')}finally{buttonBusy(button,false)}
   }
 
   function resetForLogout() {
