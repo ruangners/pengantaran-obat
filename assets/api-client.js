@@ -95,12 +95,12 @@ export class AppsScriptTransport {
       'admin.bootstrap','admin.archiveHealth','admin.resilienceHealth',
       'admin.backupNow','admin.prepareRecovery','admin.restoreMaster','admin.restoreMissingSheet','admin.restoreSheetStructure','admin.restoreSheetContent',
       'admin.restoreMasterCells','admin.restoreMissingTransactions','admin.emergencyRestore','admin.restoreActiveFromTrash','admin.applyProtections','admin.ensureBackupSchedule',
-      'admin.accountCreate','admin.accountUpdate','admin.accountChangePin','admin.accountSetActive','admin.dataFidelityHealth','admin.repairDataFidelity'
+      'admin.accountCreate','admin.accountUpdate','admin.accountChangePin','admin.accountSetActive','admin.dataFidelityHealth','admin.repairDataFidelity','admin.cleanupLegacyDatabase'
     ]);
     const methodName=String(method||'');
     const requestTimeoutMs = methodName === 'admin.emergencyRestore'
       ? Math.max(this.timeoutMs, 240000)
-      : methodName === 'admin.repairDataFidelity'
+      : methodName === 'admin.repairDataFidelity' || methodName === 'admin.cleanupLegacyDatabase'
         ? Math.max(this.timeoutMs, 180000)
         : methodName === 'admin.dataFidelityHealth'
           ? Math.max(this.timeoutMs, 60000)
@@ -265,6 +265,7 @@ export class PengantaranApi {
   adminResilienceHealth(token) { return this._read('admin.resilienceHealth', String(token || '')); }
   adminDataFidelityHealth(token) { return this._read('admin.dataFidelityHealth', String(token || '')); }
   adminRepairDataFidelity(token, adminPin = '') { return this._mutate('admin.repairDataFidelity', String(token || ''), String(adminPin || '')); }
+  adminCleanupLegacyDatabase(token, adminPin = '') { return this._mutate('admin.cleanupLegacyDatabase', String(token || ''), String(adminPin || '')); }
   adminBackupNow(token, note = '') { return this._mutate('admin.backupNow', String(token || ''), String(note || '')); }
   adminPrepareRecovery(token, backupId, adminPin = '') { return this._mutate('admin.prepareRecovery', String(token || ''), String(backupId || ''), String(adminPin || '')); }
   adminRestoreMaster(token, backupId, sheets = [], adminPin = '') { return this._mutate('admin.restoreMaster', String(token || ''), String(backupId || ''), Array.isArray(sheets) ? sheets : [], String(adminPin || '')); }

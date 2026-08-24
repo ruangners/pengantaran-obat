@@ -272,7 +272,8 @@ export function createAdminModule(ctx) {
     const structure = r.structure || {};
     const missingSheets = Array.isArray(structure.missing) ? structure.missing : [];
     const damagedSheets = Array.isArray(structure.damaged) ? structure.damaged : [];
-    const structureIssues = [...missingSheets,...damagedSheets];
+    const duplicateSheets = Array.isArray(structure.duplicates) ? structure.duplicates : [];
+    const structureIssues = [...missingSheets,...damagedSheets,...duplicateSheets];
     const structureIssueNames = new Set(structureIssues.map(item=>String(item.name||'')));
     const dataHealth = r.dataHealth || {};
     const dataIssues = Array.isArray(dataHealth.issues) ? dataHealth.issues : [];
@@ -299,20 +300,25 @@ export function createAdminModule(ctx) {
 
     const fileStateBlock = masterFile.trashed ? `<div class="content-card structure-health-card warning-card"><div class="card-head-row"><div><span class="eyebrow">FILE MASTER</span><h3>⚠ File Master berada di Sampah Drive</h3><p>Pulihkan file asli terlebih dahulu. Ini lebih aman daripada membuat Master baru dari backup.</p></div><button id="restoreProductionTrash" class="warning-btn">Pulihkan File Asli</button></div></div>` : '';
     const emergencyAccessBlock = emergencyAccess.recoveryRequired ? `<div class="content-card emergency-recovery-card danger-card"><div class="card-head-row"><div><span class="eyebrow">PEMULIHAN AKSES DARURAT</span><h3>${emergencyAccess.ready?'🚨 Mode Pemulihan Akses siap digunakan':'🚨 Akun & PIN rusak dan kredensial pemulihan belum siap'}</h3><p>${emergencyAccess.ready?'Akun Admin normal tidak dapat digunakan. Gunakan PIN Admin terakhir yang sah hanya untuk memulihkan <b>Akun & PIN</b> dari Backup Sehat Terakhir.':'Jangan lanjutkan perubahan pada Master. Hash PIN pemulihan belum tersedia di Script Properties sehingga pemulihan otomatis Akun & PIN tidak dapat diotorisasi.'}</p></div></div><div class="system-alert warning compact-alert"><strong>${emergencyAccess.ready?'Akses dibatasi hanya untuk pemulihan.':'Intervensi teknis diperlukan.'}</strong><span>${emergencyAccess.ready?`Alasan: ${esc(emergencyAccess.accessReason||'AKSES tidak sehat')} • Hash darurat tersedia: ${Number(emergencyAccess.storedCredentials||0)}.`:'Pulihkan AKSES dari backup secara administratif, lalu jalankan setupDataResilience() saat Admin aktif kembali untuk menyiapkan perlindungan darurat.'}</span></div></div>` : '';
-    const structureCard = `<div class="content-card structure-health-card ${structureIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN STRUKTUR</span><h3>${structureIssues.length?`⚠ ${structureIssues.length} struktur sheet perlu dipulihkan`:'✓ Struktur sistem lengkap'}</h3><p>${structureIssues.length?'Sheet hilang, header hilang, atau susunan kolom yang rusak harus dipulihkan sebelum fungsi terkait digunakan.':'Semua sheet sistem kritis tersedia dan struktur/header yang diperiksa sesuai.'}</p></div><button id="refreshStructureHealth" class="mini-btn">Periksa Ulang</button></div><div class="protection-summary"><div><span>Status</span><strong>${structureIssues.length?'PERLU PEMULIHAN':'AMAN'}</strong></div><div><span>Sheet wajib</span><strong>${Number(structure.found||0)} / ${Number(structure.total||0)}</strong></div><div><span>Masalah struktur</span><strong>${structureIssues.length}</strong></div></div>${structureIssues.length?`<div class="structure-issue-list">${structureIssues.map(item=>{
+    const structureCard = `<div class="content-card structure-health-card ${structureIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN STRUKTUR</span><h3>${structureIssues.length?`⚠ ${structureIssues.length} struktur sheet perlu dipulihkan`:'✓ Struktur sistem lengkap'}</h3><p>${structureIssues.length?'Sheet hilang, header hilang/duplikat, atau kolom legacy harus ditangani sebelum struktur dinyatakan bersih.':'Semua sheet sistem kritis tersedia dan struktur/header yang diperiksa sesuai.'}</p></div><button id="refreshStructureHealth" class="mini-btn">Periksa Ulang</button></div><div class="protection-summary"><div><span>Status</span><strong>${structureIssues.length?'PERLU PEMULIHAN':'AMAN'}</strong></div><div><span>Sheet wajib</span><strong>${Number(structure.found||0)} / ${Number(structure.total||0)}</strong></div><div><span>Masalah struktur</span><strong>${structureIssues.length}</strong></div></div>${structureIssues.length?`<div class="structure-issue-list">${structureIssues.map(item=>{
       const source=item.recommendedSource||item.recommendedStructureSource||null;
       const critical=String(item.severity||'')==='CRITICAL';
       const isMissing=!item.exists;
       const isMaster=String(item.severity||'')==='MASTER';
-      let action='<span class="status-badge failed">Backup sehat tidak ditemukan</span>';
-      if(source){
+      const legacyCleanup=String(item.issueType||'')==='LEGACY_DATABASE_COLUMNS';
+      let action=legacyCleanup?`<button class="mini-btn warning-soft" data-cleanup-legacy="1">Bersihkan Kolom Legacy</button>`:'<span class="status-badge failed">Backup sehat tidak ditemukan</span>';
+      if(source&&!legacyCleanup){
         if(critical) action=`<button class="mini-btn danger-soft" data-emergency-restore="${esc(source.id)}" data-structure-issue="${esc(item.name)}">Buka Pemulihan Darurat</button>`;
         else if(isMaster) action=`<button class="mini-btn warning-soft" data-restore-master="${esc(source.id)}" data-restore-name="${esc(source.name||'Backup Sehat Terakhir')}">Pulihkan Master</button>`;
         else if(isMissing) action=`<button class="mini-btn warning-soft" data-restore-missing="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Sheet Sistem</button>`;
         else action=`<button class="mini-btn warning-soft" data-restore-structure="${esc(item.name)}" data-source-id="${esc(source.id)}">Pulihkan Struktur Sheet</button>`;
       }
-      const detail=isMissing?'Sheet tidak ditemukan.':`Header/struktur tidak sesuai${(item.missingHeaders||[]).length?` • header hilang: ${esc(item.missingHeaders.join(', '))}`:''}.`;
-      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • ${detail}${source?` • sumber: ${esc(source.name)}`:''}</span></div>${action}</div>`;
+      const legacyCols=(item.legacyHeaders||[]).map(x=>`${x.header} (kolom ${Number(x.column||0)})`).join(', ');
+      const duplicateNames=(item.duplicateNonLegacy||item.duplicateHeaders||[]).map(x=>x.header?`${x.header} ×${Number(x.count||2)}`:String(x)).join(', ');
+      const detail=legacyCleanup
+        ? `Kolom metadata legacy masih berada di DATABASE${legacyCols?` • ${esc(legacyCols)}`:''}. Data akan diverifikasi/migrasikan ke DELIVERY_META sebelum kolom dihapus.`
+        : isMissing?'Sheet tidak ditemukan.':`Header/struktur tidak sesuai${(item.missingHeaders||[]).length?` • header hilang: ${esc(item.missingHeaders.join(', '))}`:''}${duplicateNames?` • header duplikat: ${esc(duplicateNames)}`:''}.`;
+      return `<div class="structure-issue"><div><strong>${esc(systemSheetLabel(item.name))}</strong><span>${esc(item.name)} • ${detail}${source&&!legacyCleanup?` • sumber: ${esc(source.name)}`:''}</span></div>${action}</div>`;
     }).join('')}</div>`:''}</div>`;
 
     const dataHealthCard = `<div class="content-card data-health-card ${dataIssues.length?'warning-card':''}"><div class="card-head-row"><div><span class="eyebrow">KESEHATAN DATA</span><h3>${dataIssues.length?`⚠ ${dataIssues.length} data perlu diperiksa`:'✓ Data tidak menunjukkan kehilangan yang terdeteksi'}</h3><p>${dataIssues.length?'Sistem membandingkan kondisi aktif dengan cadangan sebelumnya untuk mendeteksi kehilangan data yang tidak wajar.':'Tidak ada penurunan data tidak wajar yang terdeteksi dari pemeriksaan otomatis.'}</p></div><button id="refreshDataHealth" class="mini-btn">Periksa Ulang</button></div>${dataIssues.length?`<div class="structure-issue-list">${dataIssues.map(item=>{
@@ -386,6 +392,7 @@ export function createAdminModule(ctx) {
         <details><summary>Beberapa baris DATABASE / transaksi terhapus</summary><ol><li>Lihat bagian <b>Kesehatan Data</b>.</li><li>Sistem membandingkan <b>ID Sistem</b>, <b>ATTEMPT_ID</b>, dan <b>PARENT_ID</b> dengan <b>Backup Sehat Terakhir</b>.</li><li>Jika record hilang terdeteksi, klik <b>Pulihkan Transaksi Hilang</b>.</li><li>Masukkan PIN Admin.</li><li>Sistem hanya menambahkan record yang hilang dan tidak me-rollback transaksi baru.</li><li>Pastikan hasil verifikasi integritas berstatus <b>AMAN</b>.</li></ol></details>
         <details><summary>DATABASE kosong total, header rusak, atau sheet DATABASE hilang</summary><ol><li>Hentikan operasional transaksi.</li><li>Buka bagian <b>Pemulihan Darurat</b>.</li><li>Gunakan sumber checkpoint/backup yang direkomendasikan sistem.</li><li>Jalankan <b>Pemulihan Darurat</b>.</li><li>Sistem mengembalikan DATABASE dan komponen transaksi terkait sebagai satu bundle.</li><li>Operasional hanya dianggap aman setelah verifikasi header, ID, duplikasi, dan relasi transaksi berstatus <b>AMAN</b>.</li></ol></details>
         <details><summary>Data masih ada tetapi tanggal/waktu berubah menjadi angka</summary><ol><li>Jangan mengubah angka serial tersebut secara manual.</li><li>Buka bagian <b>Integritas Format Data</b>.</li><li>Klik <b>Periksa Format Data</b>.</li><li>Jika ada temuan, klik <b>Perbaiki Format Data</b> dan masukkan PIN Admin.</li><li>Sistem membuat backup pengaman, memeriksa seluruh sheet dengan schema aplikasi, lalu mengembalikan tipe/format tanggal-waktu dan PIN; backup sehat hanya dipakai sebagai acuan validasi bila diperlukan.</li><li>Periksa kembali Dashboard Manajemen dan <b>Integritas Format Data</b>.</li></ol></details>
+        <details><summary>DATABASE menampilkan Kode Paket/Catatan Kurir berulang</summary><ol><li>Jangan menghapus kolom secara manual.</li><li>Buka <b>Kesehatan Struktur</b>.</li><li>Pada Database Transaksi pilih <b>Bersihkan Kolom Legacy</b>.</li><li>Masukkan PIN Admin. Sistem membuat backup pengaman terlebih dahulu.</li><li>Sistem memeriksa seluruh nilai Kode Paket/Catatan Kurir lama dan memastikan nilainya sudah tersimpan konsisten di <b>DELIVERY_META</b>.</li><li>Kolom legacy hanya dihapus bila verifikasi tidak menemukan konflik. Bila ada konflik, tidak ada kolom yang dihapus dan Admin mendapat peringatan untuk pemeriksaan.</li><li>Setelah berhasil, jalankan <b>Periksa Ulang</b> pada Kesehatan Struktur.</li></ol></details>
         <details><summary>File Master masuk Sampah Drive</summary><ol><li>Buka bagian <b>Kesehatan Struktur</b> dan pastikan status file terdeteksi.</li><li>Jika tombol <b>Pulihkan File Asli</b> tersedia, gunakan tombol tersebut dan masukkan PIN Admin.</li><li>Jika file belum dapat diakses dari Dashboard, buka Google Drive → Sampah dan pulihkan file asli.</li><li>Kembali ke Dashboard lalu periksa <b>Kesehatan Struktur</b> dan <b>Kesehatan Data</b>.</li></ol></details>
         <details><summary>File Master hilang permanen</summary><ol><li>Gunakan backup sehat untuk membuat salinan pemulihan.</li><li>Periksa seluruh sheet dan konsistensi data.</li><li>Siapkan file pengganti dari backup sehat.</li><li>Relink backend hanya dilakukan pengelola sistem/IT. Jangan mengubah koneksi produksi tanpa pemeriksaan.</li></ol></details>
       </div><div class="system-alert info"><strong>Prinsip aman</strong><span>Pulihkan sekecil mungkin: cell untuk salah hapus cell, satu sheet untuk sheet sistem, dan bundle transaksi hanya untuk keadaan darurat.</span></div></div>`;
@@ -399,6 +406,7 @@ export function createAdminModule(ctx) {
     document.getElementById('refreshDataHealth')?.addEventListener('click',() => refreshResilienceState_({silent:false,preserveScroll:true}));
     document.getElementById('checkDataFidelity')?.addEventListener('click',event=>checkDataFidelity_(event.currentTarget));
     document.getElementById('repairDataFidelity')?.addEventListener('click',event=>repairDataFidelity_(event.currentTarget));
+    root.querySelectorAll('[data-cleanup-legacy]').forEach(button=>button.addEventListener('click',()=>cleanupLegacyDatabase_(button)));
     document.getElementById('restoreProductionTrash')?.addEventListener('click',restoreProductionFromTrash_);
     document.getElementById('compareMasterCells')?.addEventListener('click',async event => { const button=event.currentTarget; setBusy(button,true,'Membandingkan…'); try { await openCellComparison_(document.getElementById('cellRecoverySource')?.value,document.getElementById('cellRecoverySheet')?.value); } finally { setBusy(button,false); } });
     root.querySelectorAll('[data-open-backup]').forEach(button => button.addEventListener('click',() => window.open(button.dataset.openBackup,'_blank','noopener')));
@@ -410,6 +418,27 @@ export function createAdminModule(ctx) {
     root.querySelectorAll('[data-restore-content]').forEach(button=>button.addEventListener('click',()=>restoreProductionSheetContent_(button.dataset.restoreContent,button.dataset.sourceId,button)));
     root.querySelectorAll('[data-restore-transactions]').forEach(button=>button.addEventListener('click',()=>restoreMissingTransactionsProduction_(button.dataset.restoreTransactions,button)));
     root.querySelectorAll('[data-emergency-restore]').forEach(button=>button.addEventListener('click',()=>emergencyRestoreProduction_(button.dataset.emergencyRestore,button)));
+  }
+
+  async function cleanupLegacyDatabase_(triggerButton=null) {
+    const pin=await requestAdminPin_({
+      title:'Bersihkan kolom legacy DATABASE?',
+      message:'Sistem akan membuat backup pengaman, memeriksa seluruh Kode Paket dan Catatan Kurir lama, memastikan nilainya sudah tersimpan konsisten di DELIVERY_META, lalu menghapus hanya kolom metadata legacy dari DATABASE. Jika ditemukan konflik, pembersihan dibatalkan dan tidak ada kolom yang dihapus.',
+      confirmLabel:'Ya, Verifikasi & Bersihkan'
+    });
+    if(!pin)return;
+    setBusy(triggerButton,true,'Memverifikasi…');
+    const x=window.scrollX,y=window.scrollY;
+    try{
+      const response=await api().adminCleanupLegacyDatabase(token(),pin);
+      const cleanup=response.data?.cleanup||{};
+      if(cleanup.resilienceSnapshot)state.resilience=cleanup.resilienceSnapshot;
+      else await refreshResilienceState_({silent:true,preserveScroll:true});
+      state.fidelity=null;
+      if(archiveMounted_()){drawArchive();restoreScroll_(x,y);}
+      ctx.showToast(cleanup.noChanges?'DATABASE sudah bersih dari kolom metadata legacy.':`${Number(cleanup.removedColumns||0)} kolom legacy dihapus. DELIVERY_META diverifikasi: ${Number(cleanup.migratedCreated||0)} dibuat, ${Number(cleanup.migratedUpdated||0)} diperbarui.`,'success',9000);
+    }catch(error){ctx.showToast(error.message,'error',10000);}
+    finally{setBusy(triggerButton,false);}
   }
 
   async function checkDataFidelity_(triggerButton=null) {
