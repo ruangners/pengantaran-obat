@@ -405,6 +405,8 @@ function openView(view) {
   const meta = PAGE_META[view] || ['Menu','Pengantaran Obat Gratis'];
   $('pageTitle').textContent = role === 'MANAJEMEN' && view === 'home' ? 'Ringkasan' : meta[0];
   $('pageSubtitle').textContent = role === 'MANAJEMEN' && view === 'home' ? 'Key Performance Indicator (KPI) layanan' : meta[1];
+  const contextLabel = role === 'MANAJEMEN' ? 'DASHBOARD MANAJEMEN' : role === 'ADMIN' ? 'ADMIN DATA' : role === 'FARMASI' ? 'FARMASI' : role === 'KURIR' ? 'KURIR' : 'LAYANAN INTERNAL';
+  if ($('mobileContext')) $('mobileContext').textContent = contextLabel;
   $('pageContent').innerHTML = '';
   window.scrollTo({top:0,behavior:'auto'});
 
