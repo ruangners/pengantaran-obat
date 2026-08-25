@@ -172,7 +172,7 @@ export function createCourierModule(ctx) {
     const summary = document.getElementById('courierRouteSummary');
     if (summary) {
       const groups = routeGroups(state.ready).slice(0, 6);
-      summary.innerHTML = groups.length ? groups.map(g => `<div class="card route-summary-card"><span>${esc(g.district || g.region || 'Wilayah')}</span><strong>${esc(g.village || '-')}</strong><div><b>${g.count}</b> paket siap</div></div>`).join('') : `<div class="content-card empty-state"><div>✓</div><h3>Belum ada antrean siap</h3><p>Paket baru akan muncul setelah Farmasi menandai obat siap diantar.</p></div>`;
+      summary.innerHTML = groups.length ? groups.map(g => `<div class="card route-summary-card"><div class="route-summary-place"><strong>${esc(g.village || '-')}</strong><span>${esc(g.district || g.region || 'Wilayah')}</span></div><div class="route-summary-count"><b>${g.count}</b><span>paket siap</span></div></div>`).join('') : `<div class="content-card empty-state"><div>✓</div><h3>Belum ada antrean siap</h3><p>Paket baru akan muncul setelah Farmasi menandai obat siap diantar.</p></div>`;
     }
     bindIncidentResolveButton();
   }
